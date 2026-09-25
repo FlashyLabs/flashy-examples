@@ -1,8 +1,16 @@
 /**
- * Example 12: Rites — Witnessed Observances and Standing
+ * Example 12: Sealing & Non-Identifying Projection (a Rites concepts exercise)
  *
- * This example demonstrates the ritual/1 format for recording and verifying
- * witnessed observances that affect standing/reputation.
+ * This example demonstrates two concepts a ritual/1 log relies on — a
+ * content-addressed digest that binds to the record's content, and a
+ * non-identifying public projection — using a deliberately simplified record.
+ *
+ * It is NOT the canonical ritual/1 format. Real ritual/1 fragments have
+ * liturgies and observances that climb a performed -> witnessed -> consecrated
+ * state ladder, require an https evidence URL and an independent witness, are
+ * consecrated by a person/, are append-only (corrections supersede), and carry
+ * NO reward or value (accrual lives in a separate reward/1). See
+ * Rites-Network/SPEC.md and the flashy-docs rites guide for the real shape.
  */
 
 import crypto from 'node:crypto';
@@ -18,15 +26,15 @@ export function createRitual({
   subject,
   object,
   witness,
-  claimedValue,
-  claimedOutcome
+  evidence,
+  outcome
 }) {
   if (!kind) throw new Error('kind is required');
   if (!subject) throw new Error('subject is required');
   if (!object) throw new Error('object is required');
   if (!witness) throw new Error('witness is required');
-  if (!claimedValue) throw new Error('claimedValue is required');
-  if (!claimedOutcome) throw new Error('claimedOutcome is required');
+  if (!evidence) throw new Error('evidence is required');
+  if (!outcome) throw new Error('outcome is required');
 
   // Generate a unique ritual ID
   const timestamp = new Date().toISOString();
@@ -44,8 +52,8 @@ export function createRitual({
     object,
     when: timestamp,
     witness,
-    claimedValue,
-    claimedOutcome
+    evidence,
+    outcome
   };
 }
 
@@ -143,8 +151,8 @@ export async function run() {
     subject: 'person/alice',
     object: 'course/flashy-academy/101',
     witness: 'org/flashy-academy',
-    claimedValue: '100-gold',
-    claimedOutcome: 'completed'
+    evidence: 'https://ci.example/runs/101',
+    outcome: 'completed'
   });
 
   console.log(`   ID: ${ritual1.id}`);
@@ -176,24 +184,24 @@ export async function run() {
       subject: 'person/alice',
       object: 'course/101',
       witness: 'org/academy',
-      claimedValue: '100-gold',
-      claimedOutcome: 'completed'
+      evidence: 'https://ci.example/runs/101',
+      outcome: 'completed'
     },
     {
       kind: 'achievement',
       subject: 'person/alice',
       object: 'hackathon/2026-09',
       witness: 'org/academy',
-      claimedValue: '500-gold',
-      claimedOutcome: '1st-place'
+      evidence: 'https://ci.example/runs/hack-2026-09',
+      outcome: '1st-place'
     },
     {
       kind: 'contribution',
       subject: 'person/bob',
       object: 'repo/magician',
       witness: 'org/magician',
-      claimedValue: '250-gold',
-      claimedOutcome: 'merged-pr'
+      evidence: 'https://github.com/flashylabs/magician/pull/42',
+      outcome: 'merged-pr'
     }
   ];
 
@@ -235,7 +243,7 @@ export async function run() {
   console.log('   Sealed ritual (private):');
   console.log(`   - Subject: ${sealed.ritual.subject}`);
   console.log(`   - Object: ${sealed.ritual.object}`);
-  console.log(`   - Value: ${sealed.ritual.claimedValue}`);
+  console.log(`   - Value: ${sealed.ritual.evidence}`);
 
   console.log('\n   Notary projection (public):');
   const projection = nonIdentifyingProjection(sealed);
@@ -248,7 +256,7 @@ export async function run() {
   console.log('8. Testing immutability...');
 
   // Try to tamper with the ritual, leaving the stale canonical/digest in place
-  const tamperedRitual = { ...sealed1.ritual, claimedValue: '1000-gold' };
+  const tamperedRitual = { ...sealed1.ritual, evidence: 'https://ci.example/runs/forged' };
   const tamperedSealed = {
     ...sealed1,
     ritual: tamperedRitual
@@ -270,8 +278,8 @@ export async function run() {
     subject: 'person/alice',
     object: 'course/101',
     witness: 'org/academy',
-    claimedValue: '100-gold',
-    claimedOutcome: 'completed'
+    evidence: 'https://ci.example/runs/101',
+    outcome: 'completed'
   });
 
   const sealed_a = seal(ritual_a, {
@@ -285,8 +293,8 @@ export async function run() {
     subject: 'person/alice',
     object: 'course/101',
     witness: 'org/academy',
-    claimedValue: '100-gold',
-    claimedOutcome: 'completed'
+    evidence: 'https://ci.example/runs/101',
+    outcome: 'completed'
   });
 
   const sealed_b = seal(ritual_b, {

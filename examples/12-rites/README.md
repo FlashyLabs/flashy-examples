@@ -1,50 +1,63 @@
-# Example 12: Rites — Witnessed Observances and Standing
+# Example 12: Sealing & Non-Identifying Projection (a Rites concepts exercise)
 
-Learn to record and verify witnessed observances using the ritual/1 format.
+Learn two concepts a Rites `ritual/1` log depends on — a **content-addressed
+digest** that binds to a record's content, and a **non-identifying public
+projection** — using a deliberately simplified record.
 
-## What is Rites?
+> ⚠️ **This is a concepts exercise, not the canonical `ritual/1` format.**
+> Real `ritual/1` fragments have **liturgies** and **observances** that climb a
+> `performed → witnessed → consecrated` state ladder, require an `https://`
+> **evidence** URL and an **independent witness** (neither the performer nor its
+> principal), are **consecrated by a `person/`**, are **append-only**
+> (corrections `supersede`), and carry **no reward or value** — accrual lives in
+> a separate `reward/1` ("an observance that could carry its own reward is a slot
+> machine with liturgical vocabulary"). Model real fragments on
+> [`Rites-Network/SPEC.md`](https://github.com/FlashyLabs/Rites-Network/blob/main/SPEC.md)
+> and the [flashy-docs rites guide](https://github.com/flashylabs/flashy-docs/blob/main/docs/guides/rites-witnessed-observances.md),
+> **not** on this example's simplified record.
 
-Rites is a protocol for recording witnessed observances that affect an agent's standing (reputation). Unlike IntentMesh (what you plan to build), Rites records what you actually did.
+## What This Example Teaches
 
-- **Witnessed events** — actions observed and recorded by multiple parties
-- **Sealed outcomes** — cryptographically sealed observances cannot be altered
-- **Standing impact** — verified actions affect reputation in networks that trust the witness
-- **Non-identifying projection** — the public notary log reveals no personal data
-- **Verifiable anywhere** — a reader can verify an observance against the seal without trusting the issuer
+- **Content-addressed digest** — a seal's digest is `sha256` of the record's
+  canonical JSON; `verify()` recomputes the canonical form *from the record
+  itself*, so tampering is detected
+- **Deterministic verification** — same record verifies the same way, anywhere,
+  with no secret
+- **Non-identifying projection** — a public leaf reveals only an opaque ref, a
+  kind, and a timestamp; never the subject, object, or evidence
 
-## Key Concepts
-
-### Ritual — a structured observance
-
-```javascript
-{
-  id: 'ritual/acme/module-completed-2026-09',
-  kind: 'completion',                        // completion | achievement | contribution | certification
-  subject: 'person/alice',                   // who did it
-  object: 'course/flashy-academy/101',       // what they did it to
-  when: '2026-09-25T14:30:00Z',             // when
-  witness: 'org/flashy-academy',             // who saw it
-  claimedValue: 'acme-token',                // what it's worth to the subject
-  claimedOutcome: 'completed'                // what happened
-}
-```
-
-### Seal — proof of witnessing
+## The Simplified Record
 
 ```javascript
 {
-  ritual: { /* ritual data above */ },
-  digest: 'sha256-hash-of-canonical-json',   // content-addressed
-  at: '2026-09-25T14:30:05Z',               // when sealed
-  by: 'person/alice-academy-verifier'       // who sealed it
+  id: 'ritual/academy/completion-2026-09-25-a7f2b1c3',
+  kind: 'completion',                        // completion | achievement | contribution
+  subject: 'person/alice',                   // who
+  object: 'course/flashy-academy/101',       // what
+  when: '2026-09-25T14:30:00Z',              // when
+  witness: 'org/flashy-academy',             // who recorded it
+  evidence: 'https://ci.example/runs/101',   // an https URL a stranger can open
+  outcome: 'completed'                        // what happened — NO reward, NO value
 }
 ```
 
-### Three Invariants
+Compare this to the canonical shape in the spec: there is no state ladder here,
+no independent-witness rule, no `person/` consecration, and no append-only
+`supersedes`. Those are what make `ritual/1` a witnessed practice rather than a
+self-asserted claim.
 
-1. **Witnessed events are non-modifiable** — once sealed, a ritual cannot change
-2. **Sealing requires explicit verification** — a witness must actively affirm they saw it
-3. **Non-identifying projection** — the public notary reveals only that an observance happened, not who was involved
+## The Seal
+
+```javascript
+{
+  ritual: { /* record above */ },
+  canonical: '{"evidence":"...","kind":"completion",...}',  // sorted keys
+  digest: 'sha256-of-canonical',             // content-addressed
+  signature: 'hmac-of-canonical',
+  at: '2026-09-25T14:30:05Z',
+  by: 'person/verifier'
+}
+```
 
 ## Running This Example
 
@@ -55,95 +68,59 @@ npm test examples/12-rites
 
 ## Code Walkthrough
 
-See `index.mjs` for the full example. Key patterns:
-
 ```javascript
-import { createRitual, seal, verify } from './index.mjs';
+import { createRitual, seal, verify, nonIdentifyingProjection } from './index.mjs';
 
-// 1. Create a ritual (observance)
+// 1. Create a record
 const ritual = createRitual({
   kind: 'completion',
   subject: 'person/alice',
   object: 'course/flashy-academy/101',
   witness: 'org/flashy-academy',
-  claimedValue: '100-gold',
-  claimedOutcome: 'completed'
+  evidence: 'https://ci.example/runs/101',
+  outcome: 'completed'
 });
 
-console.log(ritual.id);  // ritual/acme/completion-2026-09-25T...
+// 2. Seal it
+const sealed = seal(ritual, { by: 'person/verifier', key: 'test-key' });
 
-// 2. Seal the ritual (witness affirms it)
-const sealed = seal(ritual, {
-  by: 'person/verifier-alice',
-  key: 'test-key'  // in production: cryptographic signing key
-});
+// 3. Verify — recomputes canonical FROM the record, so tampering flips to false
+verify(sealed);  // true
 
-console.log(sealed.digest);  // sha256 of canonical ritual
-
-// 3. Verify the seal
-const isValid = verify(sealed);
-console.log(isValid);  // true
-
-// 4. Create multiple rituals
-const rituals = [
-  createRitual({
-    kind: 'completion',
-    subject: 'person/alice',
-    object: 'course/101',
-    witness: 'org/academy',
-    claimedValue: '100-gold',
-    claimedOutcome: 'completed'
-  }),
-  createRitual({
-    kind: 'achievement',
-    subject: 'person/alice',
-    object: 'hackathon/2026-09',
-    witness: 'org/academy',
-    claimedValue: '500-gold',
-    claimedOutcome: '1st-place'
-  })
-];
-
-// 5. Seal all
-const sealed_rituals = rituals.map(r => seal(r, {
-  by: 'person/verifier',
-  key: 'test-key'
-}));
-
-console.log(`Sealed ${sealed_rituals.length} rituals`);
+// 4. Publish only the non-identifying projection
+nonIdentifyingProjection(sealed);
+// { ref: 'vrf/<digest-prefix>', kind: 'completion', sealedAt: '...' }
 ```
 
 ## Invariants Tested
 
-✅ **Sealed rituals are immutable** — digest matches content forever  
-✅ **Sealing requires witness affirmation** — `seal()` is explicit, not automatic  
-✅ **Digests are content-addressed** — same ritual always hashes the same way  
-✅ **Verification is deterministic** — same sealed ritual always verifies correctly  
-✅ **Non-identifying projection** — notary log contains only digest, kind, timestamp  
+✅ **Sealed records are content-addressed** — same record always hashes the same  
+✅ **Tampering is detected** — `verify()` recomputes canonical from the record,
+so swapping the record while keeping a stale digest returns `false`  
+✅ **Verification is deterministic** — same sealed record always verifies the same  
+✅ **Non-identifying projection** — the public leaf contains only ref, kind,
+timestamp; a test asserts the subject, object, and evidence never leak  
 
 ## Why This Matters
 
-**Problem:** Standing systems today are black boxes. An agent's reputation is a vendor-specific number with no way to verify why it changed.
-
-**Solution:** Witnessed observances mean:
-- Every standing change is backed by a sealed observance
-- A reader can verify the seal using only the digest and the ritual
-- The public notary reveals that something happened at a time, but not what
-- Different networks can weight the same observances differently (some trust this witness, others don't)
+A content-addressed digest lets a reader verify a record without trusting the
+issuer, and a non-identifying projection lets a public log prove *that* something
+happened without revealing *who*. Both are load-bearing for a real `ritual/1`
+transparency log — this example isolates them so they are easy to see.
 
 ## The Flashy Estate Standards
 
-This example teaches the `ritual/1` format, part of the estate:
-
-- `trust/1` — trust graphs and routing (Magician)
-- `intent/1` — federated roadmaps (IntentMesh)
-- `ritual/1` — witnessed observances (Rites)
-- `aao/1` — authority, activation, outcomes (GDA-OS)
+| Standard | Format | Solves |
+|----------|--------|--------|
+| `trust/1` | Trust graphs and routing | Magician |
+| `intent/1` | Federated roadmaps | IntentMesh |
+| `ritual/1` | Witnessed practice (liturgies + observances) | Rites |
+| `aao/0.1` | Machine-readable authority + conformance | FlashyOS |
 
 ## Next Steps
 
-1. Understand how sealed observances drive standing (see Flashy Network's `/settlements`)
-2. Learn how the notary log aggregates seals from multiple witnesses
-3. Explore how different policies weight the same observance differently
-4. Integrate Rites into your own identity or rewards system
-
+1. Read the [rites guide](https://github.com/flashylabs/flashy-docs/blob/main/docs/guides/rites-witnessed-observances.md)
+   and [`Rites-Network/SPEC.md`](https://github.com/FlashyLabs/Rites-Network/blob/main/SPEC.md)
+   for the real `ritual/1` shape
+2. See how a real observance climbs `performed → witnessed → consecrated`
+3. Note where reward is kept out (`reward/1`) and why

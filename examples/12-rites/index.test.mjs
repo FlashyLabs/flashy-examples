@@ -10,16 +10,16 @@ describe('Example 12: Rites', () => {
         subject: 'person/alice',
         object: 'course/101',
         witness: 'org/academy',
-        claimedValue: '100-gold',
-        claimedOutcome: 'completed'
+        evidence: 'https://ci.example/runs/101',
+        outcome: 'completed'
       });
 
       assert.equal(ritual.kind, 'completion');
       assert.equal(ritual.subject, 'person/alice');
       assert.equal(ritual.object, 'course/101');
       assert.equal(ritual.witness, 'org/academy');
-      assert.equal(ritual.claimedValue, '100-gold');
-      assert.equal(ritual.claimedOutcome, 'completed');
+      assert.equal(ritual.evidence, 'https://ci.example/runs/101');
+      assert.equal(ritual.outcome, 'completed');
     });
 
     it('generates unique ritual IDs', () => {
@@ -28,8 +28,8 @@ describe('Example 12: Rites', () => {
         subject: 'person/alice',
         object: 'course/101',
         witness: 'org/academy',
-        claimedValue: '100-gold',
-        claimedOutcome: 'completed'
+        evidence: 'https://ci.example/runs/101',
+        outcome: 'completed'
       });
 
       const ritual2 = createRitual({
@@ -37,8 +37,8 @@ describe('Example 12: Rites', () => {
         subject: 'person/alice',
         object: 'course/101',
         witness: 'org/academy',
-        claimedValue: '100-gold',
-        claimedOutcome: 'completed'
+        evidence: 'https://ci.example/runs/101',
+        outcome: 'completed'
       });
 
       assert.notEqual(ritual1.id, ritual2.id);
@@ -50,8 +50,8 @@ describe('Example 12: Rites', () => {
           subject: 'person/alice',
           object: 'course/101',
           witness: 'org/academy',
-          claimedValue: '100-gold',
-          claimedOutcome: 'completed'
+          evidence: 'https://ci.example/runs/101',
+          outcome: 'completed'
         });
       });
     });
@@ -62,8 +62,8 @@ describe('Example 12: Rites', () => {
           kind: 'completion',
           object: 'course/101',
           witness: 'org/academy',
-          claimedValue: '100-gold',
-          claimedOutcome: 'completed'
+          evidence: 'https://ci.example/runs/101',
+          outcome: 'completed'
         });
       });
     });
@@ -74,8 +74,8 @@ describe('Example 12: Rites', () => {
           kind: 'completion',
           subject: 'person/alice',
           witness: 'org/academy',
-          claimedValue: '100-gold',
-          claimedOutcome: 'completed'
+          evidence: 'https://ci.example/runs/101',
+          outcome: 'completed'
         });
       });
     });
@@ -86,8 +86,8 @@ describe('Example 12: Rites', () => {
           kind: 'completion',
           subject: 'person/alice',
           object: 'course/101',
-          claimedValue: '100-gold',
-          claimedOutcome: 'completed'
+          evidence: 'https://ci.example/runs/101',
+          outcome: 'completed'
         });
       });
     });
@@ -98,8 +98,8 @@ describe('Example 12: Rites', () => {
         subject: 'person/alice',
         object: 'course/101',
         witness: 'org/academy',
-        claimedValue: '100-gold',
-        claimedOutcome: 'completed'
+        evidence: 'https://ci.example/runs/101',
+        outcome: 'completed'
       });
 
       assert(ritual.when);
@@ -113,8 +113,8 @@ describe('Example 12: Rites', () => {
       subject: 'person/alice',
       object: 'course/101',
       witness: 'org/academy',
-      claimedValue: '100-gold',
-      claimedOutcome: 'completed'
+      evidence: 'https://ci.example/runs/101',
+      outcome: 'completed'
     });
 
     it('creates a content-addressed digest', () => {
@@ -170,8 +170,8 @@ describe('Example 12: Rites', () => {
       subject: 'person/alice',
       object: 'course/101',
       witness: 'org/academy',
-      claimedValue: '100-gold',
-      claimedOutcome: 'completed'
+      evidence: 'https://ci.example/runs/101',
+      outcome: 'completed'
     });
 
     it('verifies a valid sealed ritual', () => {
@@ -194,7 +194,7 @@ describe('Example 12: Rites', () => {
         ...sealed,
         ritual: {
           ...sealed.ritual,
-          claimedValue: '1000-gold'
+          evidence: 'https://ci.example/runs/forged'
         }
       };
 
@@ -220,8 +220,8 @@ describe('Example 12: Rites', () => {
       subject: 'person/alice',
       object: 'course/101',
       witness: 'org/academy',
-      claimedValue: '100-gold',
-      claimedOutcome: 'completed'
+      evidence: 'https://ci.example/runs/101',
+      outcome: 'completed'
     });
 
     it('creates a non-identifying projection for notary log', () => {
@@ -247,7 +247,7 @@ describe('Example 12: Rites', () => {
 
       assert(!JSON.stringify(projection).includes('alice'));
       assert(!JSON.stringify(projection).includes('course/101'));
-      assert(!JSON.stringify(projection).includes('100-gold'));
+      assert(!JSON.stringify(projection).includes('ci.example'));
     });
 
     it('only reveals digest, kind, and timestamp', () => {
@@ -266,15 +266,15 @@ describe('Example 12: Rites', () => {
         subject: 'person/alice',
         object: 'course/101',
         witness: 'org/academy',
-        claimedValue: '100-gold',
-        claimedOutcome: 'completed'
+        evidence: 'https://ci.example/runs/101',
+        outcome: 'completed'
       });
 
       const sealed = seal(ritual, { by: 'person/verifier', key: 'test-key' });
       const originalDigest = sealed.digest;
 
       // Any change to the ritual changes the digest
-      const modified = { ...ritual, claimedValue: '1000-gold' };
+      const modified = { ...ritual, evidence: 'https://ci.example/runs/forged' };
       const modifiedSealed = seal(modified, { by: 'person/verifier', key: 'test-key' });
 
       assert.notEqual(originalDigest, modifiedSealed.digest);
@@ -286,8 +286,8 @@ describe('Example 12: Rites', () => {
         subject: 'person/alice',
         object: 'course/101',
         witness: 'org/academy',
-        claimedValue: '100-gold',
-        claimedOutcome: 'completed'
+        evidence: 'https://ci.example/runs/101',
+        outcome: 'completed'
       });
 
       // The ritual itself has no digest until sealed
@@ -306,8 +306,8 @@ describe('Example 12: Rites', () => {
         subject: 'person/charlie',
         object: 'hackathon/secret-project',
         witness: 'org/private-firm',
-        claimedValue: 'classified-amount',
-        claimedOutcome: 'sensitive-outcome'
+        evidence: 'https://ci.example/runs/private',
+        outcome: 'sensitive-outcome'
       });
 
       const sealed = seal(ritual, { by: 'person/secret-verifier', key: 'test-key' });

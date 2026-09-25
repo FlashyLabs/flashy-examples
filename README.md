@@ -261,27 +261,31 @@ npm test examples/11-intentmesh/  # ~180 test cases
 
 ---
 
-### 1️⃣2️⃣ Rites Witnessed Observances — `12-rites`
+### 1️⃣2️⃣ Sealing & Non-Identifying Projection — `12-rites`
 
-**The format: Sealed witnessed events that affect standing/reputation.**
+**A Rites concepts exercise: content-addressed digests and non-identifying projections.**
 
-Record rituals (observances), seal them cryptographically, verify across networks. Public sees only digest + kind + timestamp (no identifying data).
+Isolates two concepts a `ritual/1` log depends on. **Not** the canonical
+`ritual/1` format — real fragments have liturgies and observances that climb a
+`performed → witnessed → consecrated` ladder, require evidence URLs and
+independent witnesses, and carry no reward (see the rites guide + SPEC).
 
 ```bash
-npm run examples:rites  # ~220 lines of code + witnessing + verification
-npm test examples/12-rites/  # ~190 test cases
+npm run examples:rites  # sealing + projection concepts
+npm test examples/12-rites/  # 24 test cases
 ```
 
 **Concepts covered:**
-- ✅ Ritual creation (structured observance record)
-- ✅ Sealing (content-addressed digest, HMAC signature)
-- ✅ Verification (deterministic, portable, browser-compatible)
-- ✅ Non-identifying projection (notary log reveals nothing personal)
-- ✅ Immutability (digest proves content forever)
+- ✅ Content-addressed digest (`verify()` recomputes canonical from the record)
+- ✅ Tamper detection (a swapped record fails verification)
+- ✅ Deterministic, portable verification (no secret needed)
+- ✅ Non-identifying projection (ref + kind + timestamp only; subject never leaks)
 
 **Read:** [`examples/12-rites/README.md`](examples/12-rites/)
 
-**Why:** Part of the Flashy estate standards. Solves standing transparency: every reputation change backed by sealed proof, readers verify seals independently, different networks can weight same observances differently.
+**Why:** These two concepts are load-bearing for a real `ritual/1` transparency
+log — a reader verifies a record without trusting the issuer, and a public log
+proves *that* something happened without revealing *who*.
 
 ---
 
@@ -317,8 +321,8 @@ Examples 1-10 teach the **core four systems**. Examples 11-13 teach the **govern
 |----------|--------|---------|--------|
 | **Trust Routing** | `trust/1` | 03-magician-intro | Consent paths through graphs |
 | **Federated Roadmaps** | `intent/1` | 11-intentmesh | Roadmap visibility without logins |
-| **Witnessed Observances** | `ritual/1` | 12-rites | Verifiable reputation/standing |
-| **Governance Declarations** | `aao/1` | 13-aao-validation | Machine-readable authority |
+| **Witnessed Practice** | `ritual/1` | 12-rites (concepts only) | Legible, witnessed practice |
+| **Governance Declarations** | `aao/0.1` | 13-aao-validation (simplified) | Machine-readable authority |
 
 ---
 

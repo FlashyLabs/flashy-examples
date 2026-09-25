@@ -1,6 +1,16 @@
-# Example 13: AAO Charter Validation
+# Example 13: AAO Charter Validation (simplified concepts model)
 
-Learn to validate organization charters against the AAO (Authority, Activation, Outcomes) standard.
+Learn charter-validation *concepts* — explicit authority, closed member lists,
+no dangling references, duplicate detection — against a simplified charter shape.
+
+> ⚠️ **This is a simplified teaching model, not the canonical `@flashyos/aao`
+> manifest.** The real manifest is `aao: "0.1"` with roles carrying
+> `purpose` / `capabilities` / `humanApprovalAtOrAbove`, an `accountableTo`
+> human, and a seven-question conformance suite (`npx @flashyos/agent conform`).
+> This example uses a stripped-down `flashyos/1` charter to teach the validation
+> ideas only. For the real format see the
+> [AAO governance guide](https://github.com/flashylabs/flashy-docs/blob/main/docs/guides/aao-governance-conformance.md),
+> [flashyos.com/aao](https://flashyos.com/aao), and the `@flashyos/aao` package.
 
 ## What is AAO?
 
