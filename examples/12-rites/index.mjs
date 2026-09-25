@@ -100,16 +100,20 @@ export function seal(ritual, { by, key }) {
 
 /**
  * Verify a sealed ritual
- * Checks that the digest matches the ritual content
+ *
+ * Recomputes the canonical form FROM the ritual itself, then hashes it and
+ * compares against the stored digest. It deliberately does NOT trust
+ * `sealed.canonical`: if it did, an attacker could swap `sealed.ritual` and
+ * leave the stale canonical/digest in place, and tampering would go undetected.
+ * Binding the check to `sealed.ritual` is what makes the digest content-addressed.
  */
-export function verify(sealed, { key = sealed.signature } = {}) {
-  // Recompute digest from the ritual
+export function verify(sealed) {
+  const canonical = canonicalJSON(sealed.ritual);
   const recomputed = crypto
     .createHash('sha256')
-    .update(sealed.canonical)
+    .update(canonical)
     .digest('hex');
 
-  // Check if it matches
   return recomputed === sealed.digest;
 }
 
@@ -242,19 +246,21 @@ export async function run() {
 
   // 8. Demonstrate immutability
   console.log('8. Testing immutability...');
-  const originalDigest = sealed1.digest;
 
-  // Try to tamper with the ritual
+  // Try to tamper with the ritual, leaving the stale canonical/digest in place
   const tamperedRitual = { ...sealed1.ritual, claimedValue: '1000-gold' };
   const tamperedSealed = {
     ...sealed1,
     ritual: tamperedRitual
   };
 
-  const isTamperedValid = verify(tamperedSealed, { key: sealed1.signature });
+  // verify() recomputes the canonical form from the ritual, so a swapped
+  // ritual no longer matches the sealed digest
+  const genuineValid = verify(sealed1);
+  const isTamperedValid = verify(tamperedSealed);
 
-  console.log(`   Original digest:  ${originalDigest}`);
-  console.log(`   After tampering:  ${tamperedSealed.digest || '(would differ)'}`);
+  console.log(`   Sealed digest:    ${sealed1.digest}`);
+  console.log(`   Genuine valid:    ${genuineValid} (true = intact)`);
   console.log(`   Tampered valid:   ${isTamperedValid} (false = protected)\n`);
 
   // 9. Show digest properties

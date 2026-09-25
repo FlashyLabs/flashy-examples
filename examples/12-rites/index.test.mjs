@@ -184,29 +184,22 @@ describe('Example 12: Rites', () => {
     it('detects tampering with ritual content', () => {
       const sealed = seal(testRitual, { by: 'person/verifier', key: 'test-key' });
 
-      // Tamper with the ritual
+      // A genuine sealed ritual verifies
+      assert.equal(verify(sealed), true);
+
+      // Tamper with the ritual, leaving the stale canonical/digest in place —
+      // exactly the attack a naive verifier (one that trusts sealed.canonical)
+      // would miss.
       const tamperedSealed = {
         ...sealed,
         ritual: {
           ...sealed.ritual,
-          claimedValue: '1000-gold'  // Changed value
+          claimedValue: '1000-gold'
         }
       };
 
-      // Recompute canonical form with tampered data
-      const recomputedTampered = {
-        ...tamperedSealed,
-        canonical: JSON.stringify(tamperedSealed.ritual)
-      };
-
-      // The new digest will differ
-      const newDigest = require('node:crypto')
-        .createHash('sha256')
-        .update(recomputedTampered.canonical)
-        .digest('hex');
-
-      // Original digest != new digest
-      assert.notEqual(sealed.digest, newDigest);
+      // verify() recomputes canonical from the ritual, so the tamper is caught
+      assert.equal(verify(tamperedSealed), false);
     });
 
     it('produces same result every time for same sealed data', () => {
