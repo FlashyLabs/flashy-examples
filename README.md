@@ -237,6 +237,91 @@ npm test examples/10-performance/  # Concurrency, queries, scaling
 
 ---
 
+### 1️⃣1️⃣ IntentMesh Roadmaps — `11-intentmesh`
+
+**The format: Federated organization roadmaps with computed expiry.**
+
+Create, publish, and merge organization intentions using the `intent/1` format. Intentions decay unless restated (no stale backlog).
+
+```bash
+npm run examples:intentmesh  # ~200 lines of code + federated roadmaps
+npm test examples/11-intentmesh/  # ~180 test cases
+```
+
+**Concepts covered:**
+- ✅ Intent creation (private by structural design)
+- ✅ Human-gated promotion (agents draft, people publish)
+- ✅ Computed expiry (derived from kind, never user input)
+- ✅ Fragment merging (safe multi-org combination)
+- ✅ Visibility filtering (public/private projection)
+
+**Read:** [`examples/11-intentmesh/README.md`](examples/11-intentmesh/)
+
+**Why:** Part of the Flashy estate standards. Solves roadmap visibility: partnership conversations start from shared understanding, agents can discover overlapping work, no stale backlog.
+
+---
+
+### 1️⃣2️⃣ Rites Witnessed Observances — `12-rites`
+
+**The format: Sealed witnessed events that affect standing/reputation.**
+
+Record rituals (observances), seal them cryptographically, verify across networks. Public sees only digest + kind + timestamp (no identifying data).
+
+```bash
+npm run examples:rites  # ~220 lines of code + witnessing + verification
+npm test examples/12-rites/  # ~190 test cases
+```
+
+**Concepts covered:**
+- ✅ Ritual creation (structured observance record)
+- ✅ Sealing (content-addressed digest, HMAC signature)
+- ✅ Verification (deterministic, portable, browser-compatible)
+- ✅ Non-identifying projection (notary log reveals nothing personal)
+- ✅ Immutability (digest proves content forever)
+
+**Read:** [`examples/12-rites/README.md`](examples/12-rites/)
+
+**Why:** Part of the Flashy estate standards. Solves standing transparency: every reputation change backed by sealed proof, readers verify seals independently, different networks can weight same observances differently.
+
+---
+
+### 1️⃣3️⃣ AAO Charter Validation — `13-aao-validation`
+
+**The format: Machine-readable governance declarations (Authority, Activation, Outcomes).**
+
+Validate organization charters against AAO rules, query capabilities, check permissions. Every property publishes a charter; conformance is verified in CI.
+
+```bash
+npm run examples:aao  # ~250 lines of code + charter validation
+npm test examples/13-aao-validation/  # ~160 test cases
+```
+
+**Concepts covered:**
+- ✅ Charter structure (roles, capabilities, members)
+- ✅ Validation rules (explicit authority, closed roles, no dangling refs)
+- ✅ Permission queries (who can do what)
+- ✅ Duplicate detection (ID uniqueness)
+- ✅ Invariant enforcement (no implicit permissions)
+
+**Read:** [`examples/13-aao-validation/README.md`](examples/13-aao-validation/)
+
+**Why:** Part of the Flashy estate standards. Enables governance interoperability: authority is machine-readable, roles are explicit, different orgs speak same language for permissions, every property verifies conformance in CI.
+
+---
+
+## The Four Flashy Estate Standards
+
+Examples 1-10 teach the **core four systems**. Examples 11-13 teach the **governance standards**:
+
+| Standard | Format | Example | Solves |
+|----------|--------|---------|--------|
+| **Trust Routing** | `trust/1` | 03-magician-intro | Consent paths through graphs |
+| **Federated Roadmaps** | `intent/1` | 11-intentmesh | Roadmap visibility without logins |
+| **Witnessed Observances** | `ritual/1` | 12-rites | Verifiable reputation/standing |
+| **Governance Declarations** | `aao/1` | 13-aao-validation | Machine-readable authority |
+
+---
+
 ## 🧪 Testing (100% Coverage of Invariants)
 
 All examples include comprehensive test suites — no skipped tests, no TODOs.
