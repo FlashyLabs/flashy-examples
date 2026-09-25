@@ -120,6 +120,123 @@ npm test examples/05-combined-workflow/  # ~136 test cases
 
 ---
 
+### 6️⃣ Batch Transfers — `06-batch-transfers`
+
+**The pattern: Multiple transfers, atomic execution (all or nothing).**
+
+Execute multiple transfers to many recipients with a single consent decision.
+
+```bash
+npm run examples:batch  # ~130 lines of code + payroll pattern
+npm test examples/06-batch-transfers/  # ~4 comprehensive scenarios
+```
+
+**Concepts:**
+- ✅ Draft all transfers (pure functions)
+- ✅ Collect single approval (Alice approves all)
+- ✅ Execute atomically (fail together or succeed together)
+- ✅ Audit trail (all operations logged)
+
+**Use case:** Payroll, bulk refunds, multi-recipient payments.
+
+**Read:** [`examples/06-batch-transfers/README.md`](examples/06-batch-transfers/)
+
+---
+
+### 7️⃣ Graph Analysis — `07-graph-analysis`
+
+**The pattern: Query trust graphs for paths, reachability, bottlenecks.**
+
+Analyze Magician routing graphs to find paths, identify critical nodes, measure resilience.
+
+```bash
+npm run examples:graph  # ~110 lines of code + analysis
+npm test examples/07-graph-analysis/  # Reachability, paths, bottlenecks
+```
+
+**Concepts:**
+- ✅ Reachability queries (who can reach whom)
+- ✅ Shortest path finding (multi-path routing)
+- ✅ Bottleneck identification (critical nodes)
+- ✅ Revocation impact (connectivity after edge removal)
+
+**Use case:** Network planning, risk analysis, load balancing.
+
+**Read:** [`examples/07-graph-analysis/README.md`](examples/07-graph-analysis/)
+
+---
+
+### 8️⃣ Error Recovery — `08-error-recovery`
+
+**The pattern: Handle common errors, retry, fallback gracefully.**
+
+Demonstrate error handling: insufficient balance, revoked grants, routing failures, retry logic.
+
+```bash
+npm run examples:errors  # ~120 lines of code + 5 scenarios
+npm test examples/08-error-recovery/  # Errors, recovery, retries
+```
+
+**Concepts:**
+- ✅ Insufficient balance (clear error)
+- ✅ Revoked grants (immediate effect)
+- ✅ Routing failures (hop declines)
+- ✅ Retry with exponential backoff
+- ✅ Graceful fallback (alternative paths)
+
+**Use case:** Production resilience, reliability patterns.
+
+**Read:** [`examples/08-error-recovery/README.md`](examples/08-error-recovery/)
+
+---
+
+### 9️⃣ Attenuation Chains — `09-attenuation-chains`
+
+**The invariant: Delegation narrows authority only. Never widens.**
+
+Create multi-level delegation chains: Alice → Bob → Carol → Dave. Each level narrower.
+
+```bash
+npm run examples:attenuation  # ~140 lines of code + chains
+npm test examples/09-attenuation-chains/  # Narrowing, widening rejection, revocation
+```
+
+**Concepts:**
+- ✅ Cap narrowing (less spending power)
+- ✅ Expiry narrowing (shorter duration)
+- ✅ Widening rejection (throws error)
+- ✅ Cascading revocation (revoke parent → children invalid)
+
+**Use case:** Principle of least privilege, team delegation, access control.
+
+**Read:** [`examples/09-attenuation-chains/README.md`](examples/09-attenuation-chains/)
+
+---
+
+### 🔟 Performance Patterns — `10-performance`
+
+**The pattern: Throughput testing, concurrent operations, scaling.**
+
+Measure system performance: sequential vs. concurrent transfers, query efficiency, memory usage.
+
+```bash
+npm run examples:perf  # ~150 lines of code + load testing
+npm test examples/10-performance/  # Concurrency, queries, scaling
+```
+
+**Concepts:**
+- ✅ Sequential throughput (baseline)
+- ✅ Concurrent operations (parallel)
+- ✅ Query performance (balance lookups)
+- ✅ Audit trail efficiency (history fetches)
+- ✅ Memory scaling (heap usage)
+
+**Use case:** Capacity planning, optimization, production readiness.
+
+**Read:** [`examples/10-performance/README.md`](examples/10-performance/)
+
+---
+
 ## 🧪 Testing (100% Coverage of Invariants)
 
 All examples include comprehensive test suites — no skipped tests, no TODOs.
