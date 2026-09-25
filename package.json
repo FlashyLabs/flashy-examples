@@ -1,0 +1,27 @@
+{
+  "name": "flashy-examples",
+  "version": "1.0.0",
+  "description": "Working examples and tutorials for Flashy packages",
+  "license": "Apache-2.0",
+  "private": false,
+  "type": "module",
+  "scripts": {
+    "test": "node --test examples/**/*.test.mjs",
+    "lint": "eslint .",
+    "build": "echo 'Examples are ready to run'",
+    "examples:ledger": "node examples/01-ledger-basics/index.mjs",
+    "examples:rails": "node examples/02-rails-consent/index.mjs",
+    "examples:magician": "node examples/03-magician-intro/index.mjs",
+    "examples:flashyid": "node examples/04-flashyid-oauth/index.mjs",
+    "examples:combined": "node examples/05-combined-workflow/index.mjs"
+  },
+  "dependencies": {
+    "@flashylabs/ledger": "^1.0.0",
+    "@flashylabs/rails": "^1.0.0",
+    "@magician-network/core": "^1.0.0",
+    "@flashyid/sdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "eslint": "^9.0.0"
+  }
+}
