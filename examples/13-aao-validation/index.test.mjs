@@ -1,414 +1,152 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  validateRole,
+  AAO_VERSION,
+  APPROVALS,
+  ROLE_NAME_MAX,
   validateCharter,
-  listCapabilities,
-  getRoleMembers,
-  hasCap
+  conformance,
+  capabilitiesOf,
+  rolesGatingAtOrAbove,
+  roleHasCapability
 } from './index.mjs';
 
-describe('Example 13: AAO Charter Validation', () => {
-  describe('validateRole()', () => {
-    it('validates a complete role', () => {
-      const role = {
-        id: 'role/admin',
-        name: 'Administrator',
-        authority: ['can:write', 'can:delete'],
-        members: ['person/alice']
-      };
+const CHARTER = {
+  aao: '0.1',
+  name: 'Rites Protocol',
+  slug: 'rites-protocol',
+  description: 'The present tense of the record.',
+  accountableTo: 'michael@gda.capital',
+  escalation: 'spec',
+  repositories: [{ name: 'rites-network', url: 'github.com/FlashyLabs/Rites-Network', default: true }],
+  roles: [
+    { name: 'spec', family: 'engineering', purpose: 'Publishes and maintains the ritual/1 standard.', measure: 'Corpus cases passed', capabilities: ['publish', 'validate'], humanApprovalAtOrAbove: 'MEDIUM', 'x-capability': ['content-exchange'] },
+    { name: 'witness', family: 'risk', purpose: 'Attends and records an observance on its rhythm.', measure: 'Observances with a witness', capabilities: ['observe', 'witness'], humanApprovalAtOrAbove: 'LOW' },
+    { name: 'consecration', family: 'operations', purpose: 'A named human consecrates into consequence.', measure: 'Observances consecrated', capabilities: ['review', 'consecrate'], humanApprovalAtOrAbove: 'HIGH' }
+  ]
+};
 
-      const result = validateRole(role);
-      assert.equal(result.valid, true);
-      assert.equal(result.errors.length, 0);
-    });
-
-    it('requires id', () => {
-      const role = {
-        name: 'Admin',
-        authority: ['can:write'],
-        members: ['person/alice']
-      };
-
-      const result = validateRole(role);
-      assert.equal(result.valid, false);
-      assert(result.errors.some(e => e.includes('id')));
-    });
-
-    it('requires name', () => {
-      const role = {
-        id: 'role/admin',
-        authority: ['can:write'],
-        members: ['person/alice']
-      };
-
-      const result = validateRole(role);
-      assert.equal(result.valid, false);
-      assert(result.errors.some(e => e.includes('name')));
-    });
-
-    it('requires authority array', () => {
-      const role = {
-        id: 'role/admin',
-        name: 'Admin',
-        members: ['person/alice']
-      };
-
-      const result = validateRole(role);
-      assert.equal(result.valid, false);
-      assert(result.errors.some(e => e.includes('authority')));
-    });
-
-    it('requires members array', () => {
-      const role = {
-        id: 'role/admin',
-        name: 'Admin',
-        authority: ['can:write']
-      };
-
-      const result = validateRole(role);
-      assert.equal(result.valid, false);
-      assert(result.errors.some(e => e.includes('members')));
-    });
-
-    it('authority must be array of strings', () => {
-      const role = {
-        id: 'role/admin',
-        name: 'Admin',
-        authority: 'can:write',  // Not an array
-        members: ['person/alice']
-      };
-
-      const result = validateRole(role);
-      assert.equal(result.valid, false);
-    });
-
-    it('members must be array of strings', () => {
-      const role = {
-        id: 'role/admin',
-        name: 'Admin',
-        authority: ['can:write'],
-        members: 'person/alice'  // Not an array
-      };
-
-      const result = validateRole(role);
-      assert.equal(result.valid, false);
-    });
-  });
-
+describe('Example 13: AAO manifest validation (aao/0.1)', () => {
   describe('validateCharter()', () => {
-    const validCharter = {
-      kind: 'flashyos/1',
-      name: 'ACME Corp',
-      accountableTo: 'person/ceo',
-      roles: [
-        {
-          id: 'role/admin',
-          name: 'Admin',
-          authority: ['can:write'],
-          members: ['person/alice']
-        }
-      ]
-    };
-
-    it('validates a complete charter', () => {
-      const result = validateCharter(validCharter);
-      assert.equal(result.valid, true);
+    it('validates a real charter', () => {
+      const r = validateCharter(CHARTER);
+      assert.equal(r.valid, true, r.errors.join('; '));
     });
 
-    it('requires kind', () => {
-      const charter = { ...validCharter, kind: undefined };
-      const result = validateCharter(charter);
-      assert.equal(result.valid, false);
-      assert(result.errors.some(e => e.includes('kind')));
+    it('requires aao "0.1"', () => {
+      assert.equal(AAO_VERSION, '0.1');
+      assert.equal(validateCharter({ ...CHARTER, aao: '0.2' }).valid, false);
+      assert.equal(validateCharter({ ...CHARTER, aao: undefined }).valid, false);
     });
 
-    it('requires kind to be flashyos/1', () => {
-      const charter = { ...validCharter, kind: 'flashyos/2' };
-      const result = validateCharter(charter);
-      assert.equal(result.valid, false);
-      assert(result.errors.some(e => e.includes('flashyos/1')));
+    it('refuses a stray top-level key', () => {
+      const r = validateCharter({ ...CHARTER, foo: 1 });
+      assert.equal(r.valid, false);
+      assert(r.errors.some((e) => e.includes('neither a spec field nor x-')));
     });
 
-    it('requires name', () => {
-      const charter = { ...validCharter, name: undefined };
-      const result = validateCharter(charter);
-      assert.equal(result.valid, false);
+    it('allows an x- prefixed top-level key', () => {
+      assert.equal(validateCharter({ ...CHARTER, 'x-comment': ['note'] }).valid, true);
     });
 
-    it('requires accountableTo', () => {
-      const charter = { ...validCharter, accountableTo: undefined };
-      const result = validateCharter(charter);
-      assert.equal(result.valid, false);
+    it('requires name, description, accountableTo, escalation', () => {
+      for (const k of ['name', 'description', 'accountableTo', 'escalation']) {
+        assert.equal(validateCharter({ ...CHARTER, [k]: '' }).valid, false, `missing ${k} should fail`);
+      }
     });
 
-    it('requires roles array', () => {
-      const charter = { ...validCharter, roles: undefined };
-      const result = validateCharter(charter);
-      assert.equal(result.valid, false);
+    it('requires a machine-safe slug', () => {
+      assert.equal(validateCharter({ ...CHARTER, slug: 'Rites Protocol' }).valid, false);
     });
 
-    it('detects duplicate role IDs', () => {
-      const charter = {
-        kind: 'flashyos/1',
-        name: 'Test',
-        accountableTo: 'person/ceo',
-        roles: [
-          {
-            id: 'role/admin',
-            name: 'Admin',
-            authority: ['can:write'],
-            members: ['person/alice']
-          },
-          {
-            id: 'role/admin',  // Duplicate!
-            name: 'Also Admin',
-            authority: ['can:read'],
-            members: ['person/bob']
-          }
-        ]
-      };
-
-      const result = validateCharter(charter);
-      assert.equal(result.valid, false);
-      assert(result.errors.some(e => e.includes('Duplicate role ID')));
+    it('refuses a charter with no roles', () => {
+      assert.equal(validateCharter({ ...CHARTER, roles: [] }).valid, false);
     });
 
-    it('validates nested roles', () => {
-      const charter = {
-        kind: 'flashyos/1',
-        name: 'Test',
-        accountableTo: 'person/ceo',
-        roles: [
-          {
-            id: 'role/admin',
-            name: 'Admin',
-            // Missing authority and members
-          }
-        ]
-      };
-
-      const result = validateCharter(charter);
-      assert.equal(result.valid, false);
+    it('refuses a role name over the character cap', () => {
+      const long = 'x'.repeat(ROLE_NAME_MAX + 1);
+      const r = validateCharter({ ...CHARTER, roles: [{ ...CHARTER.roles[0], name: long }] });
+      assert.equal(r.valid, false);
+      assert(r.errors.some((e) => e.includes('characters')));
     });
 
-    it('detects invalid capability references', () => {
-      const charter = {
-        kind: 'flashyos/1',
-        name: 'Test',
-        accountableTo: 'person/ceo',
-        roles: [
-          {
-            id: 'role/admin',
-            name: 'Admin',
-            authority: ['can:write'],
-            members: ['person/alice']
-          }
-        ],
-        capabilities: [
-          {
-            id: 'cap/test',
-            role: 'role/nonexistent',  // Doesn't exist!
-            action: 'can:write'
-          }
-        ]
-      };
-
-      const result = validateCharter(charter);
-      assert.equal(result.valid, false);
-      assert(result.errors.some(e => e.includes('non-existent')));
+    it('refuses a duplicate role name', () => {
+      const r = validateCharter({ ...CHARTER, roles: [CHARTER.roles[0], CHARTER.roles[0]] });
+      assert.equal(r.valid, false);
+      assert(r.errors.some((e) => e.includes('duplicate role')));
     });
 
-    it('detects duplicate capability IDs', () => {
-      const charter = {
-        kind: 'flashyos/1',
-        name: 'Test',
-        accountableTo: 'person/ceo',
-        roles: [
-          {
-            id: 'role/admin',
-            name: 'Admin',
-            authority: ['can:write'],
-            members: ['person/alice']
-          }
-        ],
-        capabilities: [
-          {
-            id: 'cap/test',
-            role: 'role/admin',
-            action: 'can:write'
-          },
-          {
-            id: 'cap/test',  // Duplicate!
-            role: 'role/admin',
-            action: 'can:read'
-          }
-        ]
-      };
+    it('refuses a role with a thin purpose', () => {
+      assert.equal(validateCharter({ ...CHARTER, roles: [{ ...CHARTER.roles[0], purpose: 'too thin' }] }).valid, false);
+    });
 
-      const result = validateCharter(charter);
-      assert.equal(result.valid, false);
-      assert(result.errors.some(e => e.includes('Duplicate capability ID')));
+    it('refuses a role that names no measure', () => {
+      assert.equal(validateCharter({ ...CHARTER, roles: [{ ...CHARTER.roles[0], measure: '' }] }).valid, false);
+    });
+
+    it('refuses a role with no capability', () => {
+      const r = validateCharter({ ...CHARTER, roles: [{ ...CHARTER.roles[0], capabilities: [] }] });
+      assert.equal(r.valid, false);
+      assert(r.errors.some((e) => e.includes('no capability')));
+    });
+
+    it('refuses an approval threshold off the closed list', () => {
+      assert.equal(validateCharter({ ...CHARTER, roles: [{ ...CHARTER.roles[0], humanApprovalAtOrAbove: 'SOMETIMES' }] }).valid, false);
+      assert.deepEqual(APPROVALS, ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']);
+    });
+
+    it('refuses an escalation naming a role that does not exist', () => {
+      const r = validateCharter({ ...CHARTER, escalation: 'ghost' });
+      assert.equal(r.valid, false);
+      assert(r.errors.some((e) => e.includes('not a declared role')));
     });
   });
 
-  describe('listCapabilities()', () => {
-    const charter = {
-      kind: 'flashyos/1',
-      name: 'Test',
-      accountableTo: 'person/ceo',
-      roles: [
-        {
-          id: 'role/admin',
-          name: 'Admin',
-          authority: ['can:read', 'can:write'],
-          members: ['person/alice']
-        },
-        {
-          id: 'role/viewer',
-          name: 'Viewer',
-          authority: ['can:read'],
-          members: ['person/bob']
-        }
-      ]
-    };
-
-    it('lists capabilities by role', () => {
-      const caps = listCapabilities(charter);
-
-      assert(caps['role/admin']);
-      assert(caps['role/viewer']);
+  describe('conformance()', () => {
+    it('answers the four static questions true for a good charter', () => {
+      const c = conformance(CHARTER);
+      assert.equal(c.static.valid, true);
+      assert.equal(c.static.q1_rolesAreResponsibilities, true);
+      assert.equal(c.static.q2_capabilitiesNameActions, true);
+      assert.equal(c.static.q3_approvalWhereItHurts, true);
+      assert.equal(c.static.q4_reachableHuman, true);
     });
 
-    it('preserves role names and members', () => {
-      const caps = listCapabilities(charter);
-
-      assert.equal(caps['role/admin'].name, 'Admin');
-      assert.deepEqual(caps['role/admin'].members, ['person/alice']);
+    it('reports the three live questions as deferred, never passed', () => {
+      const c = conformance(CHARTER);
+      assert.equal(c.live.q5_authorizingHumanRecorded, 'deferred');
+      assert.equal(c.live.q6_revocationStops, 'deferred');
+      assert.equal(c.live.q7_realAuditTrail, 'deferred');
     });
 
-    it('aggregates authority permissions', () => {
-      const caps = listCapabilities(charter);
-
-      assert.deepEqual(caps['role/admin'].authority, ['can:read', 'can:write']);
-      assert.deepEqual(caps['role/viewer'].authority, ['can:read']);
+    it('q4 fails when there is no reachable human', () => {
+      assert.equal(conformance({ ...CHARTER, accountableTo: '' }).static.q4_reachableHuman, false);
     });
   });
 
-  describe('getRoleMembers()', () => {
-    const charter = {
-      kind: 'flashyos/1',
-      name: 'Test',
-      accountableTo: 'person/ceo',
-      roles: [
-        {
-          id: 'role/admin',
-          name: 'Admin',
-          authority: ['can:write'],
-          members: ['person/alice', 'person/charlie']
-        }
-      ]
-    };
-
-    it('returns members of a role', () => {
-      const members = getRoleMembers(charter, 'role/admin');
-      assert.deepEqual(members, ['person/alice', 'person/charlie']);
+  describe('capabilitiesOf()', () => {
+    it('is the sorted union of every role x-capability', () => {
+      assert.deepEqual(capabilitiesOf(CHARTER), ['content-exchange']);
     });
 
-    it('returns empty array for non-existent role', () => {
-      const members = getRoleMembers(charter, 'role/nonexistent');
-      assert.deepEqual(members, []);
+    it('is empty when no role declares one', () => {
+      assert.deepEqual(capabilitiesOf({ ...CHARTER, roles: [{ ...CHARTER.roles[1] }] }), []);
     });
   });
 
-  describe('hasCap()', () => {
-    const charter = {
-      kind: 'flashyos/1',
-      name: 'Test',
-      accountableTo: 'person/ceo',
-      roles: [
-        {
-          id: 'role/admin',
-          name: 'Admin',
-          authority: ['can:read', 'can:write', 'can:delete'],
-          members: ['person/alice']
-        },
-        {
-          id: 'role/editor',
-          name: 'Editor',
-          authority: ['can:read', 'can:write'],
-          members: ['person/bob']
-        },
-        {
-          id: 'role/viewer',
-          name: 'Viewer',
-          authority: ['can:read'],
-          members: ['person/charlie']
-        }
-      ]
-    };
-
-    it('returns true when person has capability', () => {
-      assert.equal(hasCap(charter, 'person/alice', 'can:delete'), true);
-      assert.equal(hasCap(charter, 'person/bob', 'can:write'), true);
-      assert.equal(hasCap(charter, 'person/charlie', 'can:read'), true);
-    });
-
-    it('returns false when person lacks capability', () => {
-      assert.equal(hasCap(charter, 'person/bob', 'can:delete'), false);
-      assert.equal(hasCap(charter, 'person/charlie', 'can:write'), false);
-    });
-
-    it('returns false for unknown person', () => {
-      assert.equal(hasCap(charter, 'person/unknown', 'can:read'), false);
-    });
-
-    it('returns false for unknown capability', () => {
-      assert.equal(hasCap(charter, 'person/alice', 'can:unknown'), false);
+  describe('rolesGatingAtOrAbove()', () => {
+    it('lists roles gating at or above a threshold', () => {
+      assert.deepEqual(rolesGatingAtOrAbove(CHARTER, 'HIGH'), ['consecration']);
+      assert.deepEqual(rolesGatingAtOrAbove(CHARTER, 'MEDIUM').sort(), ['consecration', 'spec']);
+      assert.deepEqual(rolesGatingAtOrAbove(CHARTER, 'LOW').sort(), ['consecration', 'spec', 'witness']);
     });
   });
 
-  describe('Invariants', () => {
-    it('invariant: authority is explicit and closed', () => {
-      const charter = {
-        kind: 'flashyos/1',
-        name: 'Test',
-        accountableTo: 'person/ceo',
-        roles: [
-          {
-            id: 'role/admin',
-            name: 'Admin',
-            authority: ['can:write'],  // Explicitly named
-            members: ['person/alice']  // Explicitly listed
-          }
-        ]
-      };
-
-      const validation = validateCharter(charter);
-      assert.equal(validation.valid, true);
-
-      // No implicit permissions
-      assert.equal(hasCap(charter, 'person/alice', 'can:delete'), false);
-      assert.equal(hasCap(charter, 'person/alice', 'can:manage-roles'), false);
-    });
-
-    it('invariant: roles are closed (member list is exhaustive)', () => {
-      const charter = {
-        kind: 'flashyos/1',
-        name: 'Test',
-        accountableTo: 'person/ceo',
-        roles: [
-          {
-            id: 'role/admin',
-            name: 'Admin',
-            authority: ['can:write'],
-            members: ['person/alice']  // Only alice
-          }
-        ]
-      };
-
-      // Bob is not in the members list, so doesn't have the capability
-      assert.equal(hasCap(charter, 'person/bob', 'can:write'), false);
+  describe('roleHasCapability() — no implicit permissions', () => {
+    it('is true only for explicitly declared capabilities', () => {
+      assert.equal(roleHasCapability(CHARTER, 'consecration', 'consecrate'), true);
+      assert.equal(roleHasCapability(CHARTER, 'witness', 'consecrate'), false);
+      assert.equal(roleHasCapability(CHARTER, 'unknown', 'anything'), false);
     });
   });
 });

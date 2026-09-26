@@ -261,55 +261,60 @@ npm test examples/11-intentmesh/  # ~180 test cases
 
 ---
 
-### 1️⃣2️⃣ Sealing & Non-Identifying Projection — `12-rites`
+### 1️⃣2️⃣ Rites — the `ritual/1` present tense — `12-rites`
 
-**A Rites concepts exercise: content-addressed digests and non-identifying projections.**
+**The format: recurring, witnessed, consequence-bearing practice.**
 
-Isolates two concepts a `ritual/1` log depends on. **Not** the canonical
-`ritual/1` format — real fragments have liturgies and observances that climb a
-`performed → witnessed → consecrated` ladder, require evidence URLs and
-independent witnesses, and carry no reward (see the rites guide + SPEC).
+A faithful model of `ritual/1`: liturgies and observances climbing a
+`performed → witnessed → consecrated` ladder **by transition, never by
+assertion** — evidence URLs required, independent witness, `person/`
+consecration, append-only, and no reward (accrual is a separate `reward/1`).
 
 ```bash
-npm run examples:rites  # sealing + projection concepts
-npm test examples/12-rites/  # 24 test cases
+node examples/12-rites/index.mjs
+npm test examples/12-rites/  # 28 test cases
 ```
 
 **Concepts covered:**
-- ✅ Content-addressed digest (`verify()` recomputes canonical from the record)
-- ✅ Tamper detection (a swapped record fails verification)
-- ✅ Deterministic, portable verification (no secret needed)
-- ✅ Non-identifying projection (ref + kind + timestamp only; subject never leaks)
+- ✅ The state ladder (an asserted state is refused)
+- ✅ Independent witness (self-witness throws)
+- ✅ Human consecration (`person/` only, and only when witnessed)
+- ✅ The four refusals (agents observe/humans consecrate; no money; append-only)
+- ✅ The anti-metric (`metrics` ship witnessed/consecrated with the raw count)
 
 **Read:** [`examples/12-rites/README.md`](examples/12-rites/)
 
-**Why:** These two concepts are load-bearing for a real `ritual/1` transparency
-log — a reader verifies a record without trusting the issuer, and a public log
-proves *that* something happened without revealing *who*.
+**Why:** Part of the Flashy estate standards. Makes a practice legible — a
+witnessed, verifiable record a stranger can check, with the flattering digit
+never shown alone.
 
 ---
 
-### 1️⃣3️⃣ AAO Charter Validation — `13-aao-validation`
+### 1️⃣3️⃣ AAO Manifest Validation — `13-aao-validation`
 
-**The format: Machine-readable governance declarations (Authority, Activation, Outcomes).**
+**The format: the `aao/0.1` manifest — machine-readable governance and conformance.**
 
-Validate organization charters against AAO rules, query capabilities, check permissions. Every property publishes a charter; conformance is verified in CI.
+Validate an org manifest against the real AAO rules (`aao:"0.1"`, roles with
+purpose/capabilities/humanApprovalAtOrAbove, an accountable human, escalation to
+a declared role), answer the seven conformance questions, and query capabilities.
 
 ```bash
-npm run examples:aao  # ~250 lines of code + charter validation
-npm test examples/13-aao-validation/  # ~160 test cases
+node examples/13-aao-validation/index.mjs
+npm test examples/13-aao-validation/  # 21 test cases
 ```
 
 **Concepts covered:**
-- ✅ Charter structure (roles, capabilities, members)
-- ✅ Validation rules (explicit authority, closed roles, no dangling refs)
-- ✅ Permission queries (who can do what)
-- ✅ Duplicate detection (ID uniqueness)
-- ✅ Invariant enforcement (no implicit permissions)
+- ✅ The manifest shape (roles are responsibilities ≤24 chars, capabilities name actions)
+- ✅ The seven questions (four static answered, three live deferred — never faked)
+- ✅ Refusals (stray keys, codenames, dangling escalation, no-capability roles)
+- ✅ Approval placed where a mistake hurts (`rolesGatingAtOrAbove`)
+- ✅ Explicit permissions (`roleHasCapability` never infers)
 
 **Read:** [`examples/13-aao-validation/README.md`](examples/13-aao-validation/)
 
-**Why:** Part of the Flashy estate standards. Enables governance interoperability: authority is machine-readable, roles are explicit, different orgs speak same language for permissions, every property verifies conformance in CI.
+**Why:** Part of the Flashy estate standards. A partner reads one manifest and
+knows who to reach, what the org can do, and where money and shipping gate on a
+human — production conformance runs `npx @flashyos/agent conform` in CI.
 
 ---
 
@@ -321,8 +326,8 @@ Examples 1-10 teach the **core four systems**. Examples 11-13 teach the **govern
 |----------|--------|---------|--------|
 | **Trust Routing** | `trust/1` | 03-magician-intro | Consent paths through graphs |
 | **Federated Roadmaps** | `intent/1` | 11-intentmesh | Roadmap visibility without logins |
-| **Witnessed Practice** | `ritual/1` | 12-rites (concepts only) | Legible, witnessed practice |
-| **Governance Declarations** | `aao/0.1` | 13-aao-validation (simplified) | Machine-readable authority |
+| **Witnessed Practice** | `ritual/1` | 12-rites | Legible, witnessed practice |
+| **Governance Declarations** | `aao/0.1` | 13-aao-validation | Machine-readable authority |
 
 ---
 

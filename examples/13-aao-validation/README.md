@@ -1,156 +1,92 @@
-# Example 13: AAO Charter Validation (simplified concepts model)
+# Example 13: AAO manifest validation (`aao/0.1`)
 
-Learn charter-validation *concepts* — explicit authority, closed member lists,
-no dangling references, duplicate detection — against a simplified charter shape.
+A faithful, dependency-free model of the `@flashyos/aao` manifest checker — the
+format that decides whether an organization of agents is an **Agentic Autonomous
+Organization** rather than a product with agents bolted on.
 
-> ⚠️ **This is a simplified teaching model, not the canonical `@flashyos/aao`
-> manifest.** The real manifest is `aao: "0.1"` with roles carrying
-> `purpose` / `capabilities` / `humanApprovalAtOrAbove`, an `accountableTo`
-> human, and a seven-question conformance suite (`npx @flashyos/agent conform`).
-> This example uses a stripped-down `flashyos/1` charter to teach the validation
-> ideas only. For the real format see the
-> [AAO governance guide](https://github.com/flashylabs/flashy-docs/blob/main/docs/guides/aao-governance-conformance.md),
-> [flashyos.com/aao](https://flashyos.com/aao), and the `@flashyos/aao` package.
+> Canon: [flashyos.com/aao](https://flashyos.com/aao),
+> [flashyos.com/standard](https://flashyos.com/standard).
+> Guide: [aao-governance-conformance.md](https://github.com/flashylabs/flashy-docs/blob/main/docs/guides/aao-governance-conformance.md).
 
-## What is AAO?
+## The manifest
 
-AAO is the governance standard for the Flashy estate. Every property (organization) publishes a charter that declares:
-
-- **Authority** — who can make decisions
-- **Activation** — who can activate/enable features
-- **Outcomes** — who sees the results/outputs
-
-The charter is validated against strict rules to ensure it's machine-readable, consistent, and safe.
-
-## Key Concepts
-
-### Charter — organization's governance declaration
-
-```javascript
+```jsonc
 {
-  kind: 'flashyos/1',                  // AAO version
-  name: 'Example Organization',
-  accountableTo: 'person/ceo',
-  roles: [
-    {
-      id: 'role/admin',
-      name: 'Administrator',
-      authority: ['can:read', 'can:write', 'can:delete'],
-      members: ['person/alice']
-    },
-    {
-      id: 'role/viewer',
-      name: 'Viewer',
-      authority: ['can:read'],
-      members: ['person/bob', 'person/charlie']
-    }
-  ],
-  capabilities: [
-    {
-      id: 'cap/admin',
-      role: 'role/admin',
-      action: 'can:write'
-    }
+  "aao": "0.1",
+  "name": "Rites Protocol",
+  "slug": "rites-protocol",                 // machine-safe: [a-z0-9-]+
+  "description": "The present tense of the record.",
+  "accountableTo": "michael@gda.capital",   // a real, reachable human
+  "escalation": "spec",                      // must name a declared role
+  "repositories": [ { "name": "rites-network", "default": true } ],
+  "roles": [
+    { "name": "consecration",                // a responsibility, <= 24 chars
+      "family": "operations",                // lowercase family
+      "purpose": "A named human consecrates an observance into consequence.",
+      "measure": "Observances consecrated by a named person",
+      "capabilities": ["review", "consecrate"],  // actions, not departments
+      "humanApprovalAtOrAbove": "HIGH" }     // LOW | MEDIUM | HIGH | CRITICAL
   ]
 }
 ```
 
-### Three Validation Rules
+## The seven questions
 
-1. **Authority is explicit** — every capability names who can do it
-2. **Roles are closed** — members are listed, not open-ended
-3. **Outcomes are visible** — what the org produces is published
+AAO asks seven questions about an agent holding credentials. Four are **static**
+(from the manifest); three are **live** — they cannot be declared, only
+demonstrated against a running org, so this example reports them `deferred`.
 
-## Running This Example
+| # | Question | Kind |
+| --- | --- | --- |
+| 1 | Roles are standing responsibilities, not codenames? | static |
+| 2 | Capabilities name actions, not departments? | static |
+| 3 | Approval thresholds where a mistake would hurt? | static |
+| 4 | A named, reachable human accountable? | static |
+| 5 | Was each agent's authorizing human recorded? | live (deferred) |
+| 6 | Does revoking an agent actually stop it? | live (deferred) |
+| 7 | Does the org produce a real audit trail? | live (deferred) |
+
+## The API
+
+| Function | Does |
+| --- | --- |
+| `validateCharter(c)` | The static rules → `{ valid, errors }` |
+| `conformance(c)` | The seven questions (static answered, live deferred) |
+| `capabilitiesOf(c)` | Sorted union of every role's `x-capability` |
+| `rolesGatingAtOrAbove(c, level)` | Roles that gate a human at/above a threshold |
+| `roleHasCapability(c, role, cap)` | Explicit check — no implicit permissions |
+
+## Running
 
 ```bash
-npm run examples:aao-validation
-npm test examples/13-aao-validation
+node examples/13-aao-validation/index.mjs
+npm test examples/13-aao-validation   # 21 test cases
 ```
 
-## Code Walkthrough
+## What the tests prove
 
-See `index.mjs` for the full example. Key patterns:
+✅ `aao` must be `"0.1"`; a stray top-level key is refused (only `x-` is allowed)  
+✅ Role names are responsibilities capped at 24 chars — a codename is refused  
+✅ Capabilities name actions; a role with none is refused  
+✅ Approval is one of `LOW/MEDIUM/HIGH/CRITICAL`  
+✅ `escalation` must name a declared role — a path to nobody is refused  
+✅ The three live questions report `deferred`, never `passed`  
+✅ Permissions are explicit — `roleHasCapability` never infers  
 
-```javascript
-import { validateCharter, validateRole, listCapabilities } from './index.mjs';
+## Why it matters
 
-// 1. Create a charter
-const charter = {
-  kind: 'flashyos/1',
-  name: 'ACME Corp',
-  accountableTo: 'person/alice',
-  roles: [
-    {
-      id: 'role/admin',
-      name: 'Admin',
-      authority: ['can:read', 'can:write'],
-      members: ['person/alice']
-    }
-  ]
-};
+Several orgs build on FlashyOS independently. If each reinvented identity,
+permissions, approvals and audit, nothing would compose. One manifest format and
+a short, hard-to-grow conformance contract mean a partner reads one file and
+knows who to reach, what the org can do, and where money and shipping gate on a
+human — without a meeting. Production conformance runs
+`npx @flashyos/agent conform` in CI.
 
-// 2. Validate the charter
-const result = validateCharter(charter);
-console.log(result.valid);    // true or false
-console.log(result.errors);   // array of error messages
+## The Flashy Estate standards
 
-// 3. Validate individual roles
-const role = charter.roles[0];
-const roleValid = validateRole(role);
-console.log(roleValid.valid);
-
-// 4. List all capabilities in charter
-const capabilities = listCapabilities(charter);
-console.log(capabilities);
-```
-
-## Invariants Tested
-
-✅ **Charter has required fields** — kind, name, accountableTo  
-✅ **All roles are valid** — id, name, authority, members required  
-✅ **Authority is closed** — member list is exhaustive  
-✅ **Capabilities reference real roles** — no dangling references  
-✅ **IDs are globally unique** — no duplicate role or capability IDs  
-
-## Why This Matters
-
-**Problem:** Decentralized organizations need a standard way to declare who can do what. Without it, every property invents its own governance model.
-
-**Solution:** AAO charter means:
-- Authority is machine-readable and can be verified
-- Roles and capabilities are explicitly named
-- No hidden or implicit permissions
-- Different organizations can interoperate because they speak the same language
-
-## The Flashy Estate Standards
-
-This example teaches the `aao/1` format, the governance standard for all properties:
-
-- `trust/1` — trust graphs and routing (Magician)
-- `intent/1` — federated roadmaps (IntentMesh)
-- `ritual/1` — witnessed observances (Rites)
-- `aao/1` — authority, activation, outcomes (GDA-OS)
-
-## The 10 House Rules
-
-Every property in the Flashy estate follows 10 invariants (see flashy-examples README):
-
-1. **Only Minor amounts** — no floating point arithmetic
-2. **Explicit consent required** — approval before value moves
-3. **Attenuation only** — delegated grants narrow, never widen
-4. **Sealed outcomes** — verifiable cryptographic proof
-5. **Opaque identity** — balances keyed by ID, never name
-6. **Verified claims** — numbers are measured, not assumed
-7. **Clarity over cleverness** — code is readable
-8. **No secrets** — everything goes to Secret Manager
-9. **Immutable audit trail** — all history is append-only
-10. **Immediate revocation** — permissions can be withdrawn instantly
-
-## Next Steps
-
-1. Validate your own organization charter against AAO
-2. Publish your charter at `/.well-known/flashyos.json`
-3. Use the conformance checker to verify adoption
-4. Join the Flashy Network by registering your capabilities
-
+| Standard | Format | Solves |
+| --- | --- | --- |
+| Trust Routing | `trust/1` | Consent paths through graphs (Magician) |
+| Federated Roadmaps | `intent/1` | Roadmap visibility without logins (IntentMesh) |
+| Witnessed Practice | `ritual/1` | Legible, witnessed practice (Rites) |
+| Governance | `aao/0.1` | Machine-readable authority + conformance |

@@ -1,126 +1,104 @@
-# Example 12: Sealing & Non-Identifying Projection (a Rites concepts exercise)
+# Example 12: Rites — the `ritual/1` present tense
 
-Learn two concepts a Rites `ritual/1` log depends on — a **content-addressed
-digest** that binds to a record's content, and a **non-identifying public
-projection** — using a deliberately simplified record.
+A faithful, dependency-free model of `ritual/1`, the estate's *present tense*:
+the recurring, witnessed, consequence-bearing act. A subject publishes
+**liturgies** (recurring rites on a cadence) and records **observances** against
+them, each climbing a state ladder **by transition, never by assertion**.
 
-> ⚠️ **This is a concepts exercise, not the canonical `ritual/1` format.**
-> Real `ritual/1` fragments have **liturgies** and **observances** that climb a
-> `performed → witnessed → consecrated` state ladder, require an `https://`
-> **evidence** URL and an **independent witness** (neither the performer nor its
-> principal), are **consecrated by a `person/`**, are **append-only**
-> (corrections `supersede`), and carry **no reward or value** — accrual lives in
-> a separate `reward/1` ("an observance that could carry its own reward is a slot
-> machine with liturgical vocabulary"). Model real fragments on
-> [`Rites-Network/SPEC.md`](https://github.com/FlashyLabs/Rites-Network/blob/main/SPEC.md)
-> and the [flashy-docs rites guide](https://github.com/flashylabs/flashy-docs/blob/main/docs/guides/rites-witnessed-observances.md),
-> **not** on this example's simplified record.
+```
+performed  →  witnessed  →  consecrated        (or  void)
+```
 
-## What This Example Teaches
+> Canonical spec: [`Rites-Network/SPEC.md`](https://github.com/FlashyLabs/Rites-Network/blob/main/SPEC.md).
+> Guide: [rites-witnessed-observances.md](https://github.com/flashylabs/flashy-docs/blob/main/docs/guides/rites-witnessed-observances.md).
 
-- **Content-addressed digest** — a seal's digest is `sha256` of the record's
-  canonical JSON; `verify()` recomputes the canonical form *from the record
-  itself*, so tampering is detected
-- **Deterministic verification** — same record verifies the same way, anywhere,
-  with no secret
-- **Non-identifying projection** — a public leaf reveals only an opaque ref, a
-  kind, and a timestamp; never the subject, object, or evidence
+## The four refusals
 
-## The Simplified Record
+1. **Agents observe; humans consecrate.** `performer` is an `agent/` id;
+   `consecration.by` is a `person/` id and nothing else.
+2. **Standing comes from what others assert.** A witness may be **neither the
+   performer nor its principal** — self-witness throws.
+3. **No money, no amounts, no scores — ever.** Accrual is a separate `reward/1`
+   whose `basis` is the observance's evidence URL. An amount field is refused.
+4. **The log is append-only.** A correction is a new `void` observance whose
+   `supersedes` names the old one. Nothing is edited or deleted.
 
-```javascript
+Every transition returns a **new** fragment and re-validates the whole thing.
+
+## The shape
+
+```json
 {
-  id: 'ritual/academy/completion-2026-09-25-a7f2b1c3',
-  kind: 'completion',                        // completion | achievement | contribution
-  subject: 'person/alice',                   // who
-  object: 'course/flashy-academy/101',       // what
-  when: '2026-09-25T14:30:00Z',              // when
-  witness: 'org/flashy-academy',             // who recorded it
-  evidence: 'https://ci.example/runs/101',   // an https URL a stranger can open
-  outcome: 'completed'                        // what happened — NO reward, NO value
+  "contract": "ritual/1",
+  "subject": "org/ritualos",
+  "generated": "2026-09-26T06:00:00Z",
+  "liturgies": [
+    { "id": "daily-office", "title": "The Daily Office", "cadence": "daily",
+      "rite": ["refresh the fragment", "seal the log"],
+      "published_by": "person/michael", "since": "2026-09-01T00:00:00Z" }
+  ],
+  "observances": [
+    { "id": "obs-1", "liturgy": "daily-office", "performer": "agent/ritualos-ci",
+      "for": "org/ritualos", "at": "2026-09-26T04:00:00Z",
+      "recorded": "2026-09-26T04:00:05Z",
+      "evidence": "https://github.com/FlashyLabs/ritualos/actions/runs/9001",
+      "state": "witnessed",
+      "witness": { "by": "org/gda-capital",
+                   "basis": "https://gda.group/.well-known/dir.json",
+                   "at": "2026-09-26T05:00:00Z" } }
+  ]
 }
 ```
 
-Compare this to the canonical shape in the spec: there is no state ladder here,
-no independent-witness rule, no `person/` consecration, and no append-only
-`supersedes`. Those are what make `ritual/1` a witnessed practice rather than a
-self-asserted claim.
+## The API (climb by transition)
 
-## The Seal
+| Function | Does | Refuses |
+| --- | --- | --- |
+| `createFragment({subject})` | A fresh calendar | non-org/person subject |
+| `publishLiturgy(f, l)` | Adds a recurring rite | cadence off the closed list; empty rite; non-person `published_by` |
+| `observe(f, o)` | The only door in — arrives `performed` | any asserted `state`/`witness`/`consecration`; non-agent performer; missing https evidence |
+| `witness(f, id, {by, basis, at})` | `performed → witnessed` | self-witness (performer or principal); non-https basis |
+| `consecrate(f, id, {by, at})` | `witnessed → consecrated` | non-`person/` `by`; unwitnessed observance |
+| `voidObservance(f, id, {…})` | Appends a correcting `void` | superseding nothing real |
+| `metrics(f)` | `{performed, witnessed, consecrated}` together | — |
+| `project(f)` | Public projection + anti-metric note | — |
 
-```javascript
-{
-  ritual: { /* record above */ },
-  canonical: '{"evidence":"...","kind":"completion",...}',  // sorted keys
-  digest: 'sha256-of-canonical',             // content-addressed
-  signature: 'hmac-of-canonical',
-  at: '2026-09-25T14:30:05Z',
-  by: 'person/verifier'
-}
-```
-
-## Running This Example
+## Running
 
 ```bash
-npm run examples:rites
-npm test examples/12-rites
+node examples/12-rites/index.mjs
+npm test examples/12-rites      # 28 test cases
 ```
 
-## Code Walkthrough
+## What the tests prove
 
-```javascript
-import { createRitual, seal, verify, nonIdentifyingProjection } from './index.mjs';
+✅ The ladder is climbed by transition — an asserted `state` is refused  
+✅ Self-witness is refused (performer and principal)  
+✅ Consecration requires a `person/` and a witnessed observance  
+✅ Every money/amount/score field is refused  
+✅ Append-only: a `void` supersedes; the original is never edited  
+✅ Immutability: each transition returns a new fragment  
+✅ `metrics` ship the witnessed/consecrated share **with** the raw count (the anti-metric)  
+✅ `project` keeps evidence URLs and carries the consequence note  
 
-// 1. Create a record
-const ritual = createRitual({
-  kind: 'completion',
-  subject: 'person/alice',
-  object: 'course/flashy-academy/101',
-  witness: 'org/flashy-academy',
-  evidence: 'https://ci.example/runs/101',
-  outcome: 'completed'
-});
+## Why the anti-metric matters
 
-// 2. Seal it
-const sealed = seal(ritual, { by: 'person/verifier', key: 'test-key' });
+Raw observance volume is the number a faucet inflates. `metrics()` always ships
+`witnessed` and `consecrated` beside `performed`, and `project()` carries a note
+a renderer may not drop, so a surface cannot show the flattering digit alone. A
+summary that stripped the evidence URLs would be that rule run backwards.
 
-// 3. Verify — recomputes canonical FROM the record, so tampering flips to false
-verify(sealed);  // true
+## The Flashy Estate standards
 
-// 4. Publish only the non-identifying projection
-nonIdentifyingProjection(sealed);
-// { ref: 'vrf/<digest-prefix>', kind: 'completion', sealedAt: '...' }
-```
+| Standard | Format | Tense | Solves |
+| --- | --- | --- | --- |
+| Trust Routing | `trust/1` | — | Consent paths through graphs (Magician) |
+| Federated Roadmaps | `intent/1` | future | Roadmap visibility without logins (IntentMesh) |
+| Witnessed Practice | `ritual/1` | present | Legible, witnessed practice (Rites) |
+| Governance | `aao/0.1` | — | Machine-readable authority (FlashyOS) |
 
-## Invariants Tested
+## Next steps
 
-✅ **Sealed records are content-addressed** — same record always hashes the same  
-✅ **Tampering is detected** — `verify()` recomputes canonical from the record,
-so swapping the record while keeping a stale digest returns `false`  
-✅ **Verification is deterministic** — same sealed record always verifies the same  
-✅ **Non-identifying projection** — the public leaf contains only ref, kind,
-timestamp; a test asserts the subject, object, and evidence never leak  
-
-## Why This Matters
-
-A content-addressed digest lets a reader verify a record without trusting the
-issuer, and a non-identifying projection lets a public log prove *that* something
-happened without revealing *who*. Both are load-bearing for a real `ritual/1`
-transparency log — this example isolates them so they are easy to see.
-
-## The Flashy Estate Standards
-
-| Standard | Format | Solves |
-|----------|--------|--------|
-| `trust/1` | Trust graphs and routing | Magician |
-| `intent/1` | Federated roadmaps | IntentMesh |
-| `ritual/1` | Witnessed practice (liturgies + observances) | Rites |
-| `aao/0.1` | Machine-readable authority + conformance | FlashyOS |
-
-## Next Steps
-
-1. Read the [rites guide](https://github.com/flashylabs/flashy-docs/blob/main/docs/guides/rites-witnessed-observances.md)
-   and [`Rites-Network/SPEC.md`](https://github.com/FlashyLabs/Rites-Network/blob/main/SPEC.md)
-   for the real `ritual/1` shape
-2. See how a real observance climbs `performed → witnessed → consecrated`
-3. Note where reward is kept out (`reward/1`) and why
+1. Read the [rites guide](https://github.com/flashylabs/flashy-docs/blob/main/docs/guides/rites-witnessed-observances.md) for the full doctrine
+2. Note how reward is kept out (`reward/1`) and why
+3. See `WELL_KNOWN` — a subject serves its fragment whole at `/.well-known/ritual.json`

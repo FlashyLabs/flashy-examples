@@ -1,327 +1,205 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { createRitual, seal, verify, nonIdentifyingProjection } from './index.mjs';
+import {
+  WELL_KNOWN,
+  createFragment,
+  publishLiturgy,
+  observe,
+  witness,
+  consecrate,
+  voidObservance,
+  metrics,
+  project,
+  validateFragment
+} from './index.mjs';
 
-describe('Example 12: Rites', () => {
-  describe('createRitual()', () => {
-    it('creates a ritual with all required fields', () => {
-      const ritual = createRitual({
-        kind: 'completion',
-        subject: 'person/alice',
-        object: 'course/101',
-        witness: 'org/academy',
-        evidence: 'https://ci.example/runs/101',
-        outcome: 'completed'
-      });
+const LITURGY = {
+  id: 'daily-office',
+  title: 'The Daily Office',
+  cadence: 'daily',
+  rite: ['refresh the fragment', 'seal the log'],
+  published_by: 'person/michael',
+  since: '2026-09-01T00:00:00Z'
+};
 
-      assert.equal(ritual.kind, 'completion');
-      assert.equal(ritual.subject, 'person/alice');
-      assert.equal(ritual.object, 'course/101');
-      assert.equal(ritual.witness, 'org/academy');
-      assert.equal(ritual.evidence, 'https://ci.example/runs/101');
-      assert.equal(ritual.outcome, 'completed');
+const OBS = {
+  id: 'obs-1',
+  liturgy: 'daily-office',
+  performer: 'agent/ritualos-ci',
+  for: 'org/ritualos',
+  at: '2026-09-26T04:00:00Z',
+  recorded: '2026-09-26T04:00:05Z',
+  evidence: 'https://github.com/FlashyLabs/ritualos/actions/runs/9001'
+};
+
+const WITNESS = { by: 'org/gda-capital', basis: 'https://gda.group/.well-known/dir.json', at: '2026-09-26T05:00:00Z' };
+
+function base() {
+  return publishLiturgy(createFragment({ subject: 'org/ritualos', generated: '2026-09-26T06:00:00Z' }), LITURGY);
+}
+
+describe('Example 12: ritual/1', () => {
+  describe('fragment + liturgy', () => {
+    it('creates an empty, valid fragment', () => {
+      const f = createFragment({ subject: 'org/ritualos' });
+      assert.equal(f.contract, 'ritual/1');
+      assert.deepEqual(f.liturgies, []);
+      assert.deepEqual(f.observances, []);
+      assert.equal(validateFragment(f).valid, true);
     });
 
-    it('generates unique ritual IDs', () => {
-      const ritual1 = createRitual({
-        kind: 'completion',
-        subject: 'person/alice',
-        object: 'course/101',
-        witness: 'org/academy',
-        evidence: 'https://ci.example/runs/101',
-        outcome: 'completed'
-      });
-
-      const ritual2 = createRitual({
-        kind: 'completion',
-        subject: 'person/alice',
-        object: 'course/101',
-        witness: 'org/academy',
-        evidence: 'https://ci.example/runs/101',
-        outcome: 'completed'
-      });
-
-      assert.notEqual(ritual1.id, ritual2.id);
+    it('serves at one well-known path', () => {
+      assert.equal(WELL_KNOWN, '/.well-known/ritual.json');
     });
 
-    it('requires kind', () => {
-      assert.throws(() => {
-        createRitual({
-          subject: 'person/alice',
-          object: 'course/101',
-          witness: 'org/academy',
-          evidence: 'https://ci.example/runs/101',
-          outcome: 'completed'
-        });
-      });
+    it('publishes a liturgy', () => {
+      const f = base();
+      assert.equal(f.liturgies.length, 1);
+      assert.equal(f.liturgies[0].id, 'daily-office');
     });
 
-    it('requires subject', () => {
-      assert.throws(() => {
-        createRitual({
-          kind: 'completion',
-          object: 'course/101',
-          witness: 'org/academy',
-          evidence: 'https://ci.example/runs/101',
-          outcome: 'completed'
-        });
-      });
+    it('refuses a cadence outside the closed list', () => {
+      assert.throws(() => publishLiturgy(createFragment({ subject: 'org/x' }), { ...LITURGY, cadence: 'hourly' }), /cadence/);
     });
 
-    it('requires object', () => {
-      assert.throws(() => {
-        createRitual({
-          kind: 'completion',
-          subject: 'person/alice',
-          witness: 'org/academy',
-          evidence: 'https://ci.example/runs/101',
-          outcome: 'completed'
-        });
-      });
+    it('refuses a liturgy with no rite', () => {
+      assert.throws(() => publishLiturgy(createFragment({ subject: 'org/x' }), { ...LITURGY, rite: [] }), /no rite/);
     });
 
-    it('requires witness', () => {
-      assert.throws(() => {
-        createRitual({
-          kind: 'completion',
-          subject: 'person/alice',
-          object: 'course/101',
-          evidence: 'https://ci.example/runs/101',
-          outcome: 'completed'
-        });
-      });
-    });
-
-    it('includes current timestamp', () => {
-      const ritual = createRitual({
-        kind: 'completion',
-        subject: 'person/alice',
-        object: 'course/101',
-        witness: 'org/academy',
-        evidence: 'https://ci.example/runs/101',
-        outcome: 'completed'
-      });
-
-      assert(ritual.when);
-      assert(!isNaN(Date.parse(ritual.when)));
+    it('refuses a liturgy published by a non-person', () => {
+      assert.throws(() => publishLiturgy(createFragment({ subject: 'org/x' }), { ...LITURGY, published_by: 'agent/ci' }), /published_by/);
     });
   });
 
-  describe('seal()', () => {
-    const testRitual = createRitual({
-      kind: 'completion',
-      subject: 'person/alice',
-      object: 'course/101',
-      witness: 'org/academy',
-      evidence: 'https://ci.example/runs/101',
-      outcome: 'completed'
+  describe('observe() — the only door in', () => {
+    it('records an observance at state performed', () => {
+      const f = observe(base(), OBS);
+      assert.equal(f.observances[0].state, 'performed');
     });
 
-    it('creates a content-addressed digest', () => {
-      const sealed = seal(testRitual, { by: 'person/verifier', key: 'test-key' });
-
-      assert(sealed.digest);
-      assert.equal(sealed.digest.length, 64); // SHA256 in hex
-      assert.match(sealed.digest, /^[0-9a-f]+$/);
+    it('refuses an asserted state', () => {
+      assert.throws(() => observe(base(), { ...OBS, state: 'consecrated' }), /arrives performed/);
     });
 
-    it('includes witness signature', () => {
-      const sealed = seal(testRitual, { by: 'person/verifier', key: 'test-key' });
-
-      assert.equal(sealed.by, 'person/verifier');
+    it('refuses an asserted witness block', () => {
+      assert.throws(() => observe(base(), { ...OBS, witness: WITNESS }), /arrives performed/);
     });
 
-    it('requires "by" parameter', () => {
-      assert.throws(() => {
-        seal(testRitual, { key: 'test-key' });
-      });
+    it('refuses a performer that is not an agent', () => {
+      assert.throws(() => observe(base(), { ...OBS, performer: 'person/alice' }), /performer must be an agent/);
     });
 
-    it('requires "key" parameter', () => {
-      assert.throws(() => {
-        seal(testRitual, { by: 'person/verifier' });
-      });
+    it('refuses an observance of a liturgy that does not exist', () => {
+      assert.throws(() => observe(base(), { ...OBS, liturgy: 'nope' }), /activity, not practice/);
     });
 
-    it('produces deterministic digest (same input = same digest)', () => {
-      const sealed1 = seal(testRitual, { by: 'person/verifier', key: 'test-key' });
-      const sealed2 = seal(testRitual, { by: 'person/verifier', key: 'test-key' });
-
-      assert.equal(sealed1.digest, sealed2.digest);
+    it('refuses evidence that is not an https URL', () => {
+      assert.throws(() => observe(base(), { ...OBS, evidence: 'ftp://x' }), /evidence must be an https URL/);
     });
 
-    it('preserves original ritual', () => {
-      const sealed = seal(testRitual, { by: 'person/verifier', key: 'test-key' });
-
-      assert.deepEqual(sealed.ritual, testRitual);
-    });
-
-    it('includes timestamp of sealing', () => {
-      const sealed = seal(testRitual, { by: 'person/verifier', key: 'test-key' });
-
-      assert(sealed.at);
-      assert(!isNaN(Date.parse(sealed.at)));
+    it('refuses recorded preceding at', () => {
+      assert.throws(() => observe(base(), { ...OBS, at: '2026-09-26T05:00:00Z', recorded: '2026-09-26T04:00:00Z' }), /recorded may not precede at/);
     });
   });
 
-  describe('verify()', () => {
-    const testRitual = createRitual({
-      kind: 'completion',
-      subject: 'person/alice',
-      object: 'course/101',
-      witness: 'org/academy',
-      evidence: 'https://ci.example/runs/101',
-      outcome: 'completed'
+  describe('witness() — a second party', () => {
+    it('transitions performed to witnessed', () => {
+      const f = witness(observe(base(), OBS), 'obs-1', WITNESS);
+      assert.equal(f.observances[0].state, 'witnessed');
+      assert.equal(f.observances[0].witness.by, 'org/gda-capital');
     });
 
-    it('verifies a valid sealed ritual', () => {
-      const sealed = seal(testRitual, { by: 'person/verifier', key: 'test-key' });
-      const isValid = verify(sealed, { key: sealed.signature });
-
-      assert.equal(isValid, true);
+    it('refuses self-witness by the performer', () => {
+      const f = observe(base(), OBS);
+      assert.throws(() => witness(f, 'obs-1', { ...WITNESS, by: 'agent/ritualos-ci' }), /self-witness/);
     });
 
-    it('detects tampering with ritual content', () => {
-      const sealed = seal(testRitual, { by: 'person/verifier', key: 'test-key' });
-
-      // A genuine sealed ritual verifies
-      assert.equal(verify(sealed), true);
-
-      // Tamper with the ritual, leaving the stale canonical/digest in place —
-      // exactly the attack a naive verifier (one that trusts sealed.canonical)
-      // would miss.
-      const tamperedSealed = {
-        ...sealed,
-        ritual: {
-          ...sealed.ritual,
-          evidence: 'https://ci.example/runs/forged'
-        }
-      };
-
-      // verify() recomputes canonical from the ritual, so the tamper is caught
-      assert.equal(verify(tamperedSealed), false);
+    it('refuses self-witness by the principal', () => {
+      const f = observe(base(), OBS);
+      assert.throws(() => witness(f, 'obs-1', { ...WITNESS, by: 'org/ritualos' }), /self-witness/);
     });
 
-    it('produces same result every time for same sealed data', () => {
-      const sealed = seal(testRitual, { by: 'person/verifier', key: 'test-key' });
+    it('refuses a witness basis that is not https', () => {
+      const f = observe(base(), OBS);
+      assert.throws(() => witness(f, 'obs-1', { ...WITNESS, basis: 'http://x' }), /basis must be the witness/);
+    });
 
-      const result1 = verify(sealed, { key: sealed.signature });
-      const result2 = verify(sealed, { key: sealed.signature });
-      const result3 = verify(sealed, { key: sealed.signature });
-
-      assert.equal(result1, result2);
-      assert.equal(result2, result3);
+    it('refuses witnessing an observance that is not performed', () => {
+      const f = witness(observe(base(), OBS), 'obs-1', WITNESS);
+      assert.throws(() => witness(f, 'obs-1', WITNESS), /only a performed observance/);
     });
   });
 
-  describe('nonIdentifyingProjection()', () => {
-    const testRitual = createRitual({
-      kind: 'completion',
-      subject: 'person/alice',
-      object: 'course/101',
-      witness: 'org/academy',
-      evidence: 'https://ci.example/runs/101',
-      outcome: 'completed'
+  describe('consecrate() — a named human', () => {
+    it('transitions witnessed to consecrated', () => {
+      const f = consecrate(witness(observe(base(), OBS), 'obs-1', WITNESS), 'obs-1', { by: 'person/michael' });
+      assert.equal(f.observances[0].state, 'consecrated');
+      assert.equal(f.observances[0].consecration.by, 'person/michael');
     });
 
-    it('creates a non-identifying projection for notary log', () => {
-      const sealed = seal(testRitual, { by: 'person/verifier', key: 'test-key' });
-      const projection = nonIdentifyingProjection(sealed);
-
-      assert(projection.ref);
-      assert.equal(projection.kind, 'completion');
-      assert(projection.sealedAt);
+    it('refuses consecration by a non-person', () => {
+      const f = witness(observe(base(), OBS), 'obs-1', WITNESS);
+      assert.throws(() => consecrate(f, 'obs-1', { by: 'agent/ci' }), /consecration.by must be a person/);
     });
 
-    it('ref is derived from digest (content-addressed)', () => {
-      const sealed = seal(testRitual, { by: 'person/verifier', key: 'test-key' });
-      const projection = nonIdentifyingProjection(sealed);
-
-      assert(projection.ref.startsWith('vrf/'));
-      assert(sealed.digest.includes(projection.ref.substring(4)));
-    });
-
-    it('does not expose subject, object, or value', () => {
-      const sealed = seal(testRitual, { by: 'person/verifier', key: 'test-key' });
-      const projection = nonIdentifyingProjection(sealed);
-
-      assert(!JSON.stringify(projection).includes('alice'));
-      assert(!JSON.stringify(projection).includes('course/101'));
-      assert(!JSON.stringify(projection).includes('ci.example'));
-    });
-
-    it('only reveals digest, kind, and timestamp', () => {
-      const sealed = seal(testRitual, { by: 'person/verifier', key: 'test-key' });
-      const projection = nonIdentifyingProjection(sealed);
-
-      const keys = Object.keys(projection);
-      assert.deepEqual(keys.sort(), ['kind', 'ref', 'sealedAt']);
+    it('refuses consecrating an unwitnessed observance', () => {
+      const f = observe(base(), OBS);
+      assert.throws(() => consecrate(f, 'obs-1', { by: 'person/michael' }), /unwitnessed observance cannot be consecrated/);
     });
   });
 
-  describe('Invariants', () => {
-    it('invariant: sealed rituals are immutable (digest proves content)', () => {
-      const ritual = createRitual({
-        kind: 'completion',
-        subject: 'person/alice',
-        object: 'course/101',
-        witness: 'org/academy',
-        evidence: 'https://ci.example/runs/101',
-        outcome: 'completed'
-      });
-
-      const sealed = seal(ritual, { by: 'person/verifier', key: 'test-key' });
-      const originalDigest = sealed.digest;
-
-      // Any change to the ritual changes the digest
-      const modified = { ...ritual, evidence: 'https://ci.example/runs/forged' };
-      const modifiedSealed = seal(modified, { by: 'person/verifier', key: 'test-key' });
-
-      assert.notEqual(originalDigest, modifiedSealed.digest);
+  describe('the four refusals', () => {
+    it('refuses any money/amount/score field', () => {
+      for (const banned of ['amount', 'value', 'reward', 'score', 'gold', 'points']) {
+        assert.throws(() => observe(base(), { ...OBS, [banned]: 1 }), /refuses money/);
+      }
     });
 
-    it('invariant: sealing requires witness affirmation (explicit, not automatic)', () => {
-      const ritual = createRitual({
-        kind: 'completion',
-        subject: 'person/alice',
-        object: 'course/101',
-        witness: 'org/academy',
-        evidence: 'https://ci.example/runs/101',
-        outcome: 'completed'
-      });
-
-      // The ritual itself has no digest until sealed
-      assert(!ritual.digest);
-      assert(!ritual.by);
-
-      // Only seal() adds those
-      const sealed = seal(ritual, { by: 'person/verifier', key: 'test-key' });
-      assert(sealed.digest);
-      assert(sealed.by);
+    it('append-only: void supersedes, never edits', () => {
+      const f = voidObservance(observe(base(), OBS), 'obs-1', { id: 'obs-1-void', reason: 'wrong run' });
+      assert.equal(f.observances.length, 2);
+      assert.equal(f.observances[1].state, 'void');
+      assert.equal(f.observances[1].supersedes, 'obs-1');
     });
 
-    it('invariant: non-identifying projection reveals no personal data', () => {
-      const ritual = createRitual({
-        kind: 'achievement',
-        subject: 'person/charlie',
-        object: 'hackathon/secret-project',
-        witness: 'org/private-firm',
-        evidence: 'https://ci.example/runs/private',
-        outcome: 'sensitive-outcome'
-      });
+    it('refuses a void that supersedes nothing real', () => {
+      assert.throws(() => voidObservance(base(), 'ghost', { id: 'v' }), /must supersede a real observance/);
+    });
+  });
 
-      const sealed = seal(ritual, { by: 'person/secret-verifier', key: 'test-key' });
-      const projection = nonIdentifyingProjection(sealed);
+  describe('immutability', () => {
+    it('every transition returns a new fragment, mutating nothing', () => {
+      const f0 = base();
+      const f1 = observe(f0, OBS);
+      const f2 = witness(f1, 'obs-1', WITNESS);
+      assert.equal(f0.observances.length, 0);
+      assert.equal(f1.observances.length, 1);
+      assert.equal(f1.observances[0].state, 'performed');
+      assert.equal(f2.observances[0].state, 'witnessed');
+    });
+  });
 
-      // Public can see that SOMETHING happened
-      assert(projection.ref);
-      assert(projection.kind);  // type of observance is public
-      assert(projection.sealedAt);
+  describe('metrics + projection (the anti-metric)', () => {
+    it('metrics ship witnessed and consecrated with the raw count', () => {
+      let f = base();
+      f = observe(f, OBS);
+      f = observe(f, { ...OBS, id: 'obs-2' });
+      f = witness(f, 'obs-2', WITNESS);
+      const m = metrics(f);
+      assert.deepEqual(m, { performed: 2, witnessed: 1, consecrated: 0 });
+    });
 
-      // But cannot see any details
-      assert(!JSON.stringify(projection).includes('charlie'));
-      assert(!JSON.stringify(projection).includes('secret-project'));
-      assert(!JSON.stringify(projection).includes('classified'));
+    it('void observances drop out of the raw count', () => {
+      let f = observe(base(), OBS);
+      f = voidObservance(f, 'obs-1', { id: 'v' });
+      assert.equal(metrics(f).performed, 0);
+    });
+
+    it('projection carries a note stating the consecrated share and keeps evidence', () => {
+      let f = consecrate(witness(observe(base(), OBS), 'obs-1', WITNESS), 'obs-1', { by: 'person/michael' });
+      const p = project(f);
+      assert.match(p.note, /1 of 1 observances carry consequence/);
+      assert.equal(p.observances[0].evidence, OBS.evidence);
     });
   });
 });
