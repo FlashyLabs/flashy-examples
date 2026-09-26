@@ -318,9 +318,44 @@ human — production conformance runs `npx @flashyos/agent conform` in CI.
 
 ---
 
+### 1️⃣4️⃣ Mesh Reference Consumer — `14-mesh-consumer`
+
+**The consumer side: read `intent/1` + `ritual/1` fragments from many sources, fold into one report.**
+
+The shape a real scheduled "observe" job takes — the network read is injected, so
+the fold is pure and testable without egress.
+
+```bash
+node examples/14-mesh-consumer/index.mjs
+npm test examples/14-mesh-consumer/  # 16 test cases
+```
+
+**Concepts covered:**
+- ✅ Four findings never collapsed (`ok` / `absent` / `unreachable` / `invalid`)
+- ✅ **Null is never zero** (all sources down → `ritual: null`, not `{performed: 0}`)
+- ✅ https only; one redirect within the same registrable domain
+- ✅ The anti-metric survives the fold (witnessed/consecrated with the raw count)
+- ✅ Never throws — every source failure is a finding
+
+**Read:** [`examples/14-mesh-consumer/README.md`](examples/14-mesh-consumer/)
+
+---
+
+## Machine-readable index
+
+Every example is listed in [`examples/manifest.json`](examples/manifest.json)
+(contract `flashy-examples/1`), validated against
+[`examples/manifest.schema.json`](examples/manifest.schema.json). A test
+(`manifest.test.mjs`) pins the manifest to the filesystem — no example is added
+or renamed without the index following. `standalone: true` marks the
+dependency-free examples (11–14) that run and test with no external npm package.
+
+---
+
 ## The Four Flashy Estate Standards
 
-Examples 1-10 teach the **core four systems**. Examples 11-13 teach the **governance standards**:
+Examples 1-10 teach the **core four systems**. Examples 11-14 teach the
+**estate standards** and how to consume them:
 
 | Standard | Format | Example | Solves |
 |----------|--------|---------|--------|

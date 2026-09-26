@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert';
 import { TrustGraph, Edge, sha256 } from '@magician-network/core';
 
-test('Magician: route introduction through chain', async (t) => {
+test('Magician: route introduction through chain', async () => {
   const graph = new TrustGraph();
 
   graph.addEdge(new Edge({ from: 'alice', to: 'bob', tier: 'direct' }));
@@ -20,7 +20,7 @@ test('Magician: route introduction through chain', async (t) => {
   assert.deepEqual(intro.route, ['bob', 'carol']);
 });
 
-test('Magician: no route returns empty', async (t) => {
+test('Magician: no route returns empty', async () => {
   const graph = new TrustGraph();
 
   graph.addEdge(new Edge({ from: 'alice', to: 'bob', tier: 'direct' }));
@@ -35,7 +35,7 @@ test('Magician: no route returns empty', async (t) => {
   assert(!intro.route || intro.route.length === 0, 'No route should exist');
 });
 
-test('Magician: seal is portable', async (t) => {
+test('Magician: seal is portable', async () => {
   const outcome = {
     introducer: 'carol',
     requester: 'alice',
@@ -59,7 +59,7 @@ test('Magician: seal is portable', async (t) => {
   assert.equal(digest, recomputed, 'Digest should be identical');
 });
 
-test('Magician: cannot forge seal', async (t) => {
+test('Magician: cannot forge seal', async () => {
   const outcome = {
     introducer: 'carol',
     requester: 'alice',
@@ -92,7 +92,7 @@ test('Magician: cannot forge seal', async (t) => {
   assert.notEqual(digest, tamperedDigest, 'Digest should change if tampered');
 });
 
-test('Magician: stale edge tier degrades', async (t) => {
+test('Magician: stale edge tier degrades', async () => {
   const staleEdge = new Edge({
     from: 'alice',
     to: 'bob',
@@ -112,7 +112,7 @@ test('Magician: stale edge tier degrades', async (t) => {
   assert.equal(freshEdge.weightAtAge(), 'direct');
 });
 
-test('Magician: declined intro is opaque', async (t) => {
+test('Magician: declined intro is opaque', async () => {
   const graph = new TrustGraph();
 
   graph.addEdge(new Edge({ from: 'alice', to: 'bob', tier: 'direct' }));

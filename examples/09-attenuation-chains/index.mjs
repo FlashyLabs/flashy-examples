@@ -74,7 +74,7 @@ async function attenuationChainsExample() {
   // Step 6: Attempt to widen grant (should fail)
   console.log('\nStep 6: Attempt to widen grant (should fail)');
   try {
-    const badGrant = flashyId.attenuate(bobGrant, {
+    flashyId.attenuate(bobGrant, {
       subject: 'person:eve',
       cap: 750,  // WIDER than Bob's $500 - this should fail!
       expiry: bobGrant.expiry
@@ -108,7 +108,7 @@ async function attenuationChainsExample() {
   }
 
   // Step 8: Revocation effect
-  console.log('\nStep 8: Revoke Bob\\'s grant (cascade effect)');
+  console.log("\nStep 8: Revoke Bob's grant (cascade effect)");
   flashyId.revoke(bobGrant.id);
   console.log(`  ✓ Bob's grant revoked`);
   console.log(`  ✓ Carol's grant also invalid (grandchild of revoked grant)`);

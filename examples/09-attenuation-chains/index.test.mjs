@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert';
 import { FlashyID } from '@flashyid/sdk';
 
-test('Attenuation: grant narrows only', async (t) => {
+test('Attenuation: grant narrows only', async () => {
   const flashyId = new FlashyID();
 
   const root = flashyId.createGrant({
@@ -21,7 +21,7 @@ test('Attenuation: grant narrows only', async (t) => {
   assert.ok(child.expiry <= root.expiry, 'Child expiry earlier than parent');
 });
 
-test('Attenuation: widening rejected', async (t) => {
+test('Attenuation: widening rejected', async () => {
   const flashyId = new FlashyID();
 
   const root = flashyId.createGrant({
@@ -40,7 +40,7 @@ test('Attenuation: widening rejected', async (t) => {
   );
 });
 
-test('Attenuation: revocation cascades to children', async (t) => {
+test('Attenuation: revocation cascades to children', async () => {
   const flashyId = new FlashyID();
 
   const root = flashyId.createGrant({

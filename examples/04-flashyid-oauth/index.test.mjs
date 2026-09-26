@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { FlashyIDClient, mintGrant, attenuate, verifyGrant } from '@flashyid/sdk';
+import { mintGrant, attenuate, verifyGrant } from '@flashyid/sdk';
 
-test('FlashyID: mint grant for user', async (t) => {
+test('FlashyID: mint grant for user', async () => {
   const subject = 'user:alice:12345';
 
   const grant = mintGrant(subject, {
@@ -15,7 +15,7 @@ test('FlashyID: mint grant for user', async (t) => {
   assert(grant.expiry > Date.now());
 });
 
-test('FlashyID: attenuate narrows grant', async (t) => {
+test('FlashyID: attenuate narrows grant', async () => {
   const grant = mintGrant('user:alice', {
     cap: 100,
     expiry: Date.now() + 1000000
@@ -30,7 +30,7 @@ test('FlashyID: attenuate narrows grant', async (t) => {
   assert(attenuated.cap < grant.cap);
 });
 
-test('FlashyID: cannot widen grant', async (t) => {
+test('FlashyID: cannot widen grant', async () => {
   const grant = mintGrant('user:alice', {
     cap: 50,
     expiry: Date.now() + 1000000
@@ -42,7 +42,7 @@ test('FlashyID: cannot widen grant', async (t) => {
   );
 });
 
-test('FlashyID: cannot extend expiry', async (t) => {
+test('FlashyID: cannot extend expiry', async () => {
   const now = Date.now();
   const grant = mintGrant('user:alice', {
     cap: 100,
@@ -55,7 +55,7 @@ test('FlashyID: cannot extend expiry', async (t) => {
   );
 });
 
-test('FlashyID: expired grant refuses operations', async (t) => {
+test('FlashyID: expired grant refuses operations', async () => {
   const grant = mintGrant('user:alice', {
     cap: 100,
     expiry: Date.now() - 1000 // Already expired
@@ -65,7 +65,7 @@ test('FlashyID: expired grant refuses operations', async (t) => {
   assert(!isValid, 'Grant should be expired');
 });
 
-test('FlashyID: delegation chain is auditable', async (t) => {
+test('FlashyID: delegation chain is auditable', async () => {
   const grant1 = mintGrant('user:alice', {
     cap: 100,
     expiry: Date.now() + 1000000
@@ -92,7 +92,7 @@ test('FlashyID: delegation chain is auditable', async (t) => {
   assert.equal(chain[2].cap, 25);
 });
 
-test('FlashyID: subject binding persists', async (t) => {
+test('FlashyID: subject binding persists', async () => {
   const subject = 'user:alice:unique-id';
   const grant = mintGrant(subject, {
     cap: 100,

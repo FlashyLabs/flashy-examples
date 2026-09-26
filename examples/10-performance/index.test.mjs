@@ -3,7 +3,7 @@ import assert from 'node:assert';
 import { Ledger, toMinor } from '@flashylabs/ledger';
 import { Rails } from '@flashylabs/rails';
 
-test('Performance: concurrent operations', async (t) => {
+test('Performance: concurrent operations', async () => {
   const ledger = new Ledger({ store: new Map() });
   const rails = new Rails({ ledger });
 
@@ -37,7 +37,7 @@ test('Performance: concurrent operations', async (t) => {
   assert.ok(elapsed < 10000, `Completed in ${elapsed}ms (< 10s)`);
 });
 
-test('Performance: query efficiency', async (t) => {
+test('Performance: query efficiency', async () => {
   const ledger = new Ledger({ store: new Map() });
 
   await ledger.registerAsset({ symbol: 'USD', decimals: 2 });

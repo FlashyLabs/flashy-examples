@@ -3,7 +3,7 @@ import assert from 'node:assert';
 import { TrustGraph, Edge } from '@magician-network/core';
 import { Rails, toMinor, toGold } from '@flashylabs/rails';
 
-test('Combined: happy path (all systems)', async (t) => {
+test('Combined: happy path (all systems)', async () => {
   // Setup
   const graph = new TrustGraph();
   graph.addEdge(new Edge({ from: 'alice', to: 'bob', tier: 'direct' }));
@@ -15,7 +15,7 @@ test('Combined: happy path (all systems)', async (t) => {
   await rails.issue('user:dave', 'usd', toMinor('10.00'));
 
   // Route introduction
-  const intro = graph.route({
+  const _intro = graph.route({
     requester: 'user:alice',
     target: 'user:dave',
     reason: 'settlement'
@@ -36,7 +36,7 @@ test('Combined: happy path (all systems)', async (t) => {
 
   // Get approval and execute
   const approval = await Rails.createConsentToken(draft);
-  const settlement = await rails.execute(draft, approval);
+  await rails.execute(draft, approval);
 
   // Verify
   const aliceBalance = await rails.getBalance('user:alice', 'usd');
@@ -46,12 +46,12 @@ test('Combined: happy path (all systems)', async (t) => {
   assert.equal(toGold(daveBalance), '60.00');
 });
 
-test('Combined: no trust path fails', async (t) => {
+test('Combined: no trust path fails', async () => {
   const graph = new TrustGraph();
   graph.addEdge(new Edge({ from: 'alice', to: 'bob', tier: 'direct' }));
   // No path to unknown
 
-  const intro = graph.route({
+  const _intro = graph.route({
     requester: 'user:alice',
     target: 'user:unknown',
     reason: 'settlement'
@@ -60,7 +60,7 @@ test('Combined: no trust path fails', async (t) => {
   assert(!intro.route || intro.route.length === 0, 'No route should exist');
 });
 
-test('Combined: insufficient balance fails', async (t) => {
+test('Combined: insufficient balance fails', async () => {
   const rails = new Rails();
 
   await rails.issue('user:alice', 'usd', toMinor('10.00')); // Only $10
@@ -81,7 +81,7 @@ test('Combined: insufficient balance fails', async (t) => {
   );
 });
 
-test('Combined: approval required', async (t) => {
+test('Combined: approval required', async () => {
   const rails = new Rails();
 
   await rails.issue('user:alice', 'usd', toMinor('100.00'));
@@ -101,7 +101,7 @@ test('Combined: approval required', async (t) => {
   );
 });
 
-test('Combined: end-to-end audit trail', async (t) => {
+test('Combined: end-to-end audit trail', async () => {
   const graph = new TrustGraph();
   graph.addEdge(new Edge({ from: 'alice', to: 'bob', tier: 'direct' }));
   graph.addEdge(new Edge({ from: 'bob', to: 'dave', tier: 'direct' }));
@@ -111,7 +111,7 @@ test('Combined: end-to-end audit trail', async (t) => {
   await rails.issue('user:dave', 'usd', toMinor('10.00'));
 
   // Full workflow
-  const intro = graph.route({
+  const _intro = graph.route({
     requester: 'user:alice',
     target: 'user:dave',
     reason: 'settlement'
@@ -125,7 +125,7 @@ test('Combined: end-to-end audit trail', async (t) => {
   });
 
   const approval = await Rails.createConsentToken(draft);
-  const settlement = await rails.execute(draft, approval);
+  await rails.execute(draft, approval);
 
   // All parts should exist in settlement record
   assert(settlement.id);

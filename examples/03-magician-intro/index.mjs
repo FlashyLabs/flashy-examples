@@ -85,14 +85,14 @@ async function main() {
 
   // Demonstrate stale edge
   console.log('7. Testing stale edge handling...');
-  const staleEdge = new Edge({
+  const _staleEdge = new Edge({
     from: 'alice',
     to: 'stale-bob',
     tier: 'direct',
     renewed: new Date(Date.now() - 400 * 24 * 60 * 60 * 1000) // 400 days old
   });
 
-  const freshEdge = new Edge({
+  const _freshEdge = new Edge({
     from: 'alice',
     to: 'fresh-bob',
     tier: 'direct',

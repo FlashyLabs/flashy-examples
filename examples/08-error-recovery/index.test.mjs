@@ -3,7 +3,7 @@ import assert from 'node:assert';
 import { Ledger, toMinor } from '@flashylabs/ledger';
 import { Rails } from '@flashylabs/rails';
 
-test('Error recovery: insufficient balance rejected', async (t) => {
+test('Error recovery: insufficient balance rejected', async () => {
   const ledger = new Ledger({ store: new Map() });
   const rails = new Rails({ ledger });
 
@@ -25,7 +25,7 @@ test('Error recovery: insufficient balance rejected', async (t) => {
   );
 });
 
-test('Error recovery: revoked grant refused', async (t) => {
+test('Error recovery: revoked grant refused', async () => {
   const ledger = new Ledger({ store: new Map() });
   const rails = new Rails({ ledger });
 
@@ -48,7 +48,7 @@ test('Error recovery: revoked grant refused', async (t) => {
   );
 });
 
-test('Error recovery: retry succeeds after transient failure', async (t) => {
+test('Error recovery: retry succeeds after transient failure', async () => {
   const ledger = new Ledger({ store: new Map() });
   const rails = new Rails({ ledger });
 
@@ -66,7 +66,7 @@ test('Error recovery: retry succeeds after transient failure', async (t) => {
 
   // First attempt (simulated transient failure via invalid conditions)
   let attempts = 0;
-  const result = (() => {
+  (() => {
     attempts++;
     if (attempts < 2) {
       throw new Error('Transient error');

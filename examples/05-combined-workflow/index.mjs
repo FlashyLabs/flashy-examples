@@ -29,7 +29,7 @@ async function main() {
 
   // 2. Alice authenticates
   console.log('2. Alice authenticates with FlashyID...');
-  const client = new FlashyIDClient({
+  const _client = new FlashyIDClient({
     issuer: 'https://id.flashyid.com',
     clientId: 'settlement.example.com'
   });

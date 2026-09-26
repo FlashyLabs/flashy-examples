@@ -288,7 +288,7 @@ describe('Example 11: IntentMesh', () => {
     });
 
     it('reports invalid fragment versions', () => {
-      const { intents, problems } = merge([
+      const { problems } = merge([
         {
           intent: '2',
           source: 'repo/bad',

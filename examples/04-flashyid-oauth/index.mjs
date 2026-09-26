@@ -33,7 +33,7 @@ async function main() {
 
   // 2. Exchange code for tokens
   console.log('3. Exchanging code for tokens...');
-  const { idToken, accessToken } = await client.exchangeCode(
+  const { idToken } = await client.exchangeCode(
     simulatedCode,
     state,
     nonce

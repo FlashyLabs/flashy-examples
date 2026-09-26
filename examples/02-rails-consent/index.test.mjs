@@ -2,13 +2,13 @@ import { test } from 'node:test';
 import assert from 'node:assert';
 import { Rails, toMinor, toGold } from '@flashylabs/rails';
 
-test('Rails: draft does not execute until approved', async (t) => {
+test('Rails: draft does not execute until approved', async () => {
   const rails = new Rails();
 
   await rails.issue('alice', 'flashy-gold', toMinor('100.00'));
   await rails.issue('bob', 'flashy-gold', toMinor('10.00'));
 
-  const draft = rails.draftTransfer({
+  const _draft = rails.draftTransfer({
     from: 'alice',
     to: 'bob',
     asset: 'flashy-gold',
@@ -20,12 +20,12 @@ test('Rails: draft does not execute until approved', async (t) => {
   assert.equal(toGold(balanceBefore), '100.00');
 });
 
-test('Rails: execution requires consent token', async (t) => {
+test('Rails: execution requires consent token', async () => {
   const rails = new Rails();
 
   await rails.issue('alice', 'flashy-gold', toMinor('100.00'));
 
-  const draft = rails.draftTransfer({
+  const _draft = rails.draftTransfer({
     from: 'alice',
     to: 'bob',
     asset: 'flashy-gold',
@@ -39,13 +39,13 @@ test('Rails: execution requires consent token', async (t) => {
   );
 });
 
-test('Rails: execute updates ledger', async (t) => {
+test('Rails: execute updates ledger', async () => {
   const rails = new Rails();
 
   await rails.issue('alice', 'flashy-gold', toMinor('100.00'));
   await rails.issue('bob', 'flashy-gold', toMinor('10.00'));
 
-  const draft = rails.draftTransfer({
+  const _draft = rails.draftTransfer({
     from: 'alice',
     to: 'bob',
     asset: 'flashy-gold',
@@ -62,13 +62,13 @@ test('Rails: execute updates ledger', async (t) => {
   assert.equal(toGold(bobBalance), '35.00');
 });
 
-test('Rails: execution is idempotent', async (t) => {
+test('Rails: execution is idempotent', async () => {
   const rails = new Rails();
 
   await rails.issue('alice', 'flashy-gold', toMinor('100.00'));
   await rails.issue('bob', 'flashy-gold', toMinor('10.00'));
 
-  const draft = rails.draftTransfer({
+  const _draft = rails.draftTransfer({
     from: 'alice',
     to: 'bob',
     asset: 'flashy-gold',
@@ -89,7 +89,7 @@ test('Rails: execution is idempotent', async (t) => {
   assert.equal(toGold(bobBalance), '35.00');
 });
 
-test('Rails: attenuate narrows grant', async (t) => {
+test('Rails: attenuate narrows grant', async () => {
   const rails = new Rails();
 
   const fullGrant = rails.createGrant('alice', {
@@ -105,7 +105,7 @@ test('Rails: attenuate narrows grant', async (t) => {
   assert.equal(attenuated.cap, toMinor('10.00'));
 });
 
-test('Rails: cannot widen grant', async (t) => {
+test('Rails: cannot widen grant', async () => {
   const rails = new Rails();
 
   const grant = rails.createGrant('alice', {
@@ -122,7 +122,7 @@ test('Rails: cannot widen grant', async (t) => {
   );
 });
 
-test('Rails: revoked grant refuses execution', async (t) => {
+test('Rails: revoked grant refuses execution', async () => {
   const rails = new Rails();
 
   await rails.issue('alice', 'flashy-gold', toMinor('100.00'));
@@ -135,7 +135,7 @@ test('Rails: revoked grant refuses execution', async (t) => {
 
   rails.revoke(grant);
 
-  const draft = rails.draftTransfer({
+  const _draft = rails.draftTransfer({
     from: 'alice',
     to: 'bob',
     asset: 'flashy-gold',

@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert';
 import { InMemoryLedgerStore, toMinor, toGold } from '@flashylabs/ledger';
 
-test('Ledger: create and query balances', async (t) => {
+test('Ledger: create and query balances', async () => {
   const store = new InMemoryLedgerStore();
 
   await store.registerAsset({
@@ -24,7 +24,7 @@ test('Ledger: create and query balances', async (t) => {
   assert.equal(toGold(balance), '50.00');
 });
 
-test('Ledger: transfer between holders', async (t) => {
+test('Ledger: transfer between holders', async () => {
   const store = new InMemoryLedgerStore();
 
   await store.registerAsset({
@@ -64,7 +64,7 @@ test('Ledger: transfer between holders', async (t) => {
   assert.equal(toGold(bobBalance), '30.00');
 });
 
-test('Ledger: cannot debit more than held', async (t) => {
+test('Ledger: cannot debit more than held', async () => {
   const store = new InMemoryLedgerStore();
 
   await store.registerAsset({
@@ -93,7 +93,7 @@ test('Ledger: cannot debit more than held', async (t) => {
   );
 });
 
-test('Ledger: idempotent replay', async (t) => {
+test('Ledger: idempotent replay', async () => {
   const store = new InMemoryLedgerStore();
 
   await store.registerAsset({
@@ -135,7 +135,7 @@ test('Ledger: idempotent replay', async (t) => {
   assert.equal(balanceBefore, balanceAfter);
 });
 
-test('Ledger: multiple assets isolated', async (t) => {
+test('Ledger: multiple assets isolated', async () => {
   const store = new InMemoryLedgerStore();
 
   await store.registerAsset({ code: 'gold', decimals: 2, name: 'Gold' });

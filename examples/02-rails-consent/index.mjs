@@ -44,7 +44,7 @@ async function main() {
 
   // Execute the transfer
   console.log('4. Executing transfer with consent...');
-  const result = await rails.execute(draft, consentToken);
+  await rails.execute(draft, consentToken);
   console.log(`   ✓ Transfer executed (ledger sealed)\n`);
 
   // Verify balances
@@ -56,7 +56,7 @@ async function main() {
 
   // Demonstrate idempotency: replay execution
   console.log('6. Replaying execution (idempotency)...');
-  const result2 = await rails.execute(draft, consentToken);
+  await rails.execute(draft, consentToken);
   const aliceReplay = await rails.getBalance('alice', 'flashy-gold');
   console.log(`   ✓ Alice balance after replay: ${toGold(aliceReplay)} Gold (unchanged)\n`);
 

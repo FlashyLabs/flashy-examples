@@ -77,7 +77,8 @@ async function performancePatternsExample() {
   }
   const query_time = Date.now() - query_start;
   console.log(`  ✓ Query time: ${query_time}ms`);
-  console.log(`  ✓ Queries/sec: ${(100000 / query_time).toFixed(0)}\n`);
+  console.log(`  ✓ Queries/sec: ${(100000 / query_time).toFixed(0)}`);
+  console.log(`  ✓ Total balance summed: ${totalBalance}\n`);
 
   // Scenario 4: Audit trail query
   console.log('Scenario 4: Audit trail efficiency');

@@ -1,9 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { Ledger, toMinor, toGold } from '@flashylabs/ledger';
+import { Ledger, toMinor } from '@flashylabs/ledger';
 import { Rails } from '@flashylabs/rails';
 
-test('Batch transfers: multiple recipients', async (t) => {
+test('Batch transfers: multiple recipients', async () => {
   const ledger = new Ledger({ store: new Map() });
   const rails = new Rails({ ledger });
 
@@ -53,7 +53,7 @@ test('Batch transfers: multiple recipients', async (t) => {
   assert.equal(daveBalance, toMinor('150.00'), 'Dave received $150');
 });
 
-test('Batch transfers: atomicity (no partial success)', async (t) => {
+test('Batch transfers: atomicity (no partial success)', async () => {
   const ledger = new Ledger({ store: new Map() });
   const rails = new Rails({ ledger });
 
@@ -99,7 +99,7 @@ test('Batch transfers: atomicity (no partial success)', async (t) => {
   assert.equal(carolBalance, undefined, 'Carol received nothing (second transfer failed)');
 });
 
-test('Batch transfers: idempotency (replayed transfer rejected)', async (t) => {
+test('Batch transfers: idempotency (replayed transfer rejected)', async () => {
   const ledger = new Ledger({ store: new Map() });
   const rails = new Rails({ ledger });
 
@@ -132,7 +132,7 @@ test('Batch transfers: idempotency (replayed transfer rejected)', async (t) => {
   assert.equal(secondBalance, toMinor('400.00'), 'Balance unchanged (replay rejected)');
 });
 
-test('Batch transfers: consent required for each transfer', async (t) => {
+test('Batch transfers: consent required for each transfer', async () => {
   const ledger = new Ledger({ store: new Map() });
   const rails = new Rails({ ledger });
 

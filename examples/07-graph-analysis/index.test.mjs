@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert';
 import { MagicianRouter } from '@magician-network/core';
 
-test('Graph analysis: reachability', async (t) => {
+test('Graph analysis: reachability', async () => {
   const router = new MagicianRouter();
 
   router.addEdge({ from: 'alice', to: 'bob', tier: 'trusted' });
@@ -13,7 +13,7 @@ test('Graph analysis: reachability', async (t) => {
   assert.ok(reachable.includes('carol'), 'Carol reachable from Alice');
 });
 
-test('Graph analysis: shortest path', async (t) => {
+test('Graph analysis: shortest path', async () => {
   const router = new MagicianRouter();
 
   router.addEdge({ from: 'alice', to: 'bob', tier: 'trusted' });
@@ -28,7 +28,7 @@ test('Graph analysis: shortest path', async (t) => {
   assert.equal(shortest.length, 2, 'Shortest path is 2 hops');
 });
 
-test('Graph analysis: revocation breaks connectivity', async (t) => {
+test('Graph analysis: revocation breaks connectivity', async () => {
   const router = new MagicianRouter();
 
   router.addEdge({ from: 'alice', to: 'bob', tier: 'trusted' });
@@ -43,7 +43,7 @@ test('Graph analysis: revocation breaks connectivity', async (t) => {
   assert.ok(!reachableAfter.includes('carol'), 'Carol not reachable after revocation');
 });
 
-test('Graph analysis: bottleneck identification', async (t) => {
+test('Graph analysis: bottleneck identification', async () => {
   const router = new MagicianRouter();
 
   // Star topology (Bob is bottleneck)

@@ -6,7 +6,8 @@
   "private": false,
   "type": "module",
   "scripts": {
-    "test": "node --test examples/**/*.test.mjs",
+    "test": "node --test manifest.test.mjs examples/**/*.test.mjs",
+    "test:standalone": "node --test manifest.test.mjs examples/11-intentmesh/*.test.mjs examples/12-rites/*.test.mjs examples/13-aao-validation/*.test.mjs examples/14-mesh-consumer/*.test.mjs",
     "lint": "eslint .",
     "build": "echo 'Examples are ready to run'",
     "examples:ledger": "node examples/01-ledger-basics/index.mjs",
