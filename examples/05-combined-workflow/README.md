@@ -1,229 +1,82 @@
 # Example 5: Combined Workflow
 
-Wire all systems together: authenticate a user, establish trust, execute a consent-gated settlement.
+Four packages, one story: an assistant opens an intent, Magician routes it,
+every hop consents, the outcome is sealed, and the holder settles a payment
+through Rails onto the ledger.
 
-## The Scenario
+## The scenario
 
-Alice wants to pay Dave $50 for consulting. Alice and Dave don't know each other, but:
-1. Alice trusts Bob (direct relationship)
-2. Bob trusts Carol (direct relationship)
-3. Carol knows Dave (direct relationship)
+Alice wants Dave for due diligence on a robotics JV. She does not know Dave, but
+Alice trusts Bob, Bob trusts Carol, and Carol knows Dave. Alice's assistant does
+the legwork; Alice does the consenting.
 
-**The system:**
-1. ✅ Alice authenticates with FlashyID
-2. ✅ Introduce Alice to Dave via the trust chain (Bob → Carol)
-3. ✅ Draft a payment
-4. ✅ Dave approves (consent gate)
-5. ✅ Execute the transfer atomically
-6. ✅ Seal the settlement with cryptographic proof
+1. **flashyID** — Alice delegates to her assistant a chain that permits
+   `intent.open` and `transfer.draft` up to 50 Gold. Not `transfer.execute`.
+2. **Magician** — the assistant opens the intent; `findPaths` finds
+   Alice → Bob → Carol → Dave; each edge's owner consents; the introduction is
+   sealed as `introduction/1`.
+3. **Rails** — the assistant drafts the 50 Gold transfer (pure, within
+   mandate). Alice consents. `execute` moves value.
+4. **Ledger** — two entries land atomically, each carrying the introduction's
+   digest in its metadata, and Alice's books reconcile to a sealed head.
 
-## Architecture
+## The one boundary every system shares
 
-```
-┌─ FlashyID (Authentication)
-│  ├─ Alice logs in
-│  └─ Receives delegation grant
-│
-├─ Magician (Trust Routing)
-│  ├─ Query: Alice → Dave?
-│  ├─ Route: Alice → Bob → Carol → Dave
-│  ├─ Collect consents
-│  └─ Seal introduction
-│
-└─ Rails + Ledger (Settlement)
-   ├─ Draft: Alice sends $50 to Dave
-   ├─ Consent: Dave approves
-   └─ Execute: Record transfer atomically
-```
+**Agents suggest; humans consent.** The same rule appears four times, enforced
+four ways:
 
-## Data Structures
+| Where | How it is enforced |
+|---|---|
+| flashyID | the assistant's chain has no `transfer.execute`; `authorize` says `out_of_mandate` |
+| Magician | `consentHop` accepts only the owner of the edge being crossed; `markIntroduced` needs every hop |
+| Rails | `execute(draft, consent)` refuses without a consent bound to this draft *by the holder* |
+| Ledger | `post()` refuses a debit past zero — after consent, before any write |
 
-### User Session
+An earlier revision of this example had Dave approve the payment. Dave is the
+recipient; the value leaving is Alice's, and the consent gate is the
+*holder's*. `approve(draft, 'person/dave', …)` is `CONSENT_MISMATCH`.
 
-```javascript
-{
-  idToken: 'eyJhbGc...',           // FlashyID OIDC token
-  user: { sub: 'user:alice', ... }, // Verified claims
-  grant: { cap: 100, ... },         // Delegation authority
-}
-```
+## Identity across systems
 
-### Settlement Record
+One id per person, everywhere: `person/alice`. That is Magician's native
+grammar (`kind/slug`), it passes the ledger's opaque-identity guard (no email,
+no phone, no wallet), and it is the `rootHuman` of the assistant's chain. The
+assistant itself is `agentSubject('alice', 'assistant')` — `agent:alice/assistant`.
+
+## What the settlement carries
 
 ```javascript
-{
-  id: 'settlement:12345',
-  from: 'user:alice',
-  to: 'user:dave',
-  asset: 'usd',
-  amount: 5000,  // $50.00
-  
-  // Proof of consent routing
-  introduction: {
-    digest: 'sha256(...)',  // Sealed proof
-    route: ['bob', 'carol']
-  },
-  
-  // Proof of consent approval
-  approval: {
-    token: 'consent:...',
-    grantId: 'grant:dave:...'
-  },
-  
-  // Proof of ledger settlement
-  ledger: {
-    txHash: 'tx:...'
-  },
-  
-  status: 'settled',
-  settledAt: 1234567890
-}
+rails.draftTransfer({
+  fromId: 'person/alice', toId: 'person/dave', amount: 50,
+  source: { type: 'settlement', id: record.digest.slice(0, 12) },
+  idempotencyKey: `intro:${record.digest.slice(0, 16)}`,
+  metadata: { introduction: record.digest },
+});
 ```
 
-## Running This Example
+The `idempotencyKey` derives from the sealed introduction, so a retried
+settlement of the same introduction settles once. Every entry's `metadata`
+names the digest; `verifyIntroduction(record)` and `rails.reconcile(id)` are
+the two checks a stranger runs.
+
+## Running this example
 
 ```bash
 npm run examples:combined
 npm test examples/05-combined-workflow
 ```
 
-## Code Walkthrough
+## Invariants tested
 
-```javascript
-// 1. Alice authenticates
-const session = await authenticate('alice');
+- **Happy path** — 50/60 Gold, two entries naming the digest, both holders reconcile
+- **No trust path, nothing to settle** — `findPaths` is `[]`
+- **Every hop consents; the seal follows the event** — `markIntroduced` and `sealOutcome` refuse early
+- **The assistant may draft, never execute** — `out_of_mandate` for `transfer.execute` and over 50 Gold
+- **The holder consents** — no consent, Dave's consent, the agent's consent: nothing moves
+- **Insufficient balance is the ledger's refusal** — after consent, before any write
+- **A retried settlement settles once** — `deduplicated`
 
-// 2. Query trust graph: can introduce Alice to Dave?
-const intro = trustGraph.route({
-  requester: session.user.sub,
-  target: 'user:dave',
-  reason: 'payment'
-});
+## Next steps
 
-// 3. Collect consents through chain
-const consents = await collectConsents(intro.route);
-
-// 4. Seal introduction
-const sealedIntro = await trustGraph.seal(intro, consents);
-
-// 5. Draft transfer
-const draft = rails.draftTransfer({
-  from: session.user.sub,
-  to: 'user:dave',
-  asset: 'usd',
-  amount: toMinor('50.00'),
-  introduction: sealedIntro
-});
-
-// 6. Send for Dave's approval
-const approval = await requestApproval(draft);
-
-// 7. Execute atomically
-const settlement = await rails.execute(draft, approval);
-
-// 8. Verify all proofs
-assert(verifyIntroduction(settlement.introduction));
-assert(verifyApproval(settlement.approval));
-assert(ledger.verifyTransaction(settlement.ledger.txHash));
-```
-
-## Invariants Preserved
-
-✅ **Authentication proves identity** — FlashyID token verifies subject  
-✅ **Trust enables introduction** — no introduction without consent chain  
-✅ **Consent gates settlement** — no transfer without explicit approval  
-✅ **Ledger is immutable** — settlement is append-only, cannot be reversed  
-✅ **Settlement is provable** — all proofs are cryptographic, verifiable by strangers  
-
-## Production Patterns
-
-### Error Recovery
-
-If any step fails, the whole flow rolls back:
-
-```javascript
-try {
-  // Any step can throw
-  const settlement = await executeWorkflow(user, target);
-} catch (err) {
-  if (err.kind === 'no_trust_path') {
-    // User cannot introduce target
-    return { status: 'no_path' };
-  }
-  if (err.kind === 'approval_timeout') {
-    // Target took too long
-    return { status: 'timeout' };
-  }
-  if (err.kind === 'insufficient_balance') {
-    // User doesn't have enough
-    return { status: 'insufficient_funds' };
-  }
-  throw err; // Unexpected
-}
-```
-
-### Audit Logging
-
-Log every step for compliance:
-
-```javascript
-audit.log({
-  event: 'settlement:initiated',
-  from: session.user.sub,
-  to: target,
-  amount,
-  timestamp: Date.now()
-});
-
-audit.log({
-  event: 'introduction:route_found',
-  path: intro.route,
-  timestamp: Date.now()
-});
-
-audit.log({
-  event: 'settlement:approved',
-  by: target,
-  timestamp: Date.now()
-});
-
-audit.log({
-  event: 'settlement:sealed',
-  txHash: settlement.ledger.txHash,
-  timestamp: Date.now()
-});
-```
-
-### Rate Limiting
-
-Limit operations per user:
-
-```javascript
-const limit = rateLimiter.check({
-  user: session.user.sub,
-  action: 'settlement',
-  window: '1 hour'
-});
-
-if (limit.exceeded) {
-  throw new Error(`Rate limit: ${limit.remaining}/${limit.quota} remaining`);
-}
-```
-
-## Testing Strategy
-
-The test file demonstrates:
-1. Happy path (all systems working)
-2. No trust path (introduction fails)
-3. Approval timeout (user doesn't respond)
-4. Insufficient balance (not enough funds)
-5. Ledger verification (cryptographic proof)
-
-## Next Steps
-
-Once comfortable with the combined workflow:
-1. Deploy to production with proper rate limiting
-2. Add compliance logging
-3. Implement error recovery and retry logic
-4. Monitor for suspicious patterns
-5. Build dashboard for operations team
+- Example 6: many transfers, and what "atomic" honestly means for a batch
+- Example 8: the error codes each layer throws, and how to recover

@@ -1,90 +1,90 @@
-⚡ **Example 7: Graph Analysis**
+# Example 7: Graph Analysis
 
-> Query trust graphs to find paths, identify bottlenecks, measure resilience, and understand network topology.
+Read a trust graph the way the router does — reachability, paths, bottlenecks,
+decay, renewal — with `@magician-network/core`.
 
-## The Pattern
+## The real shape of the API
 
-Analyze the Magician routing graph to understand:
-- Who can be reached from each holder (reachability)
-- What paths exist between two holders (routing)
-- Which holders are critical to network connectivity (bottlenecks)
-- How network resilience changes when edges are revoked
-
-## Key Concepts
-
-### 1. Reachability
+There is no `MagicianRouter`, no `findReachable()`, no `analyze()`, no
+`revokeEdge()`. A graph is a parsed `magician-graph/1` document the owner
+holds; the router is a pure traversal over it; every analysis here is a fold
+over the `Path[]` it returns.
 
 ```javascript
-const reachable = router.findReachable('user:alice');
-// Result: all holders Alice can reach through trust edges
+const graph = parseGraph(JSON.stringify(document));
+findPathsTo(graph, new Set(['person/dave']), now);   // Path[] — to a specific person
+findPaths(graph, intent, now);                        // Path[] — to whoever answers the intent's wants
+rankPaths(paths);                                     // match, then fewest introductions, then trust
 ```
 
-### 2. Path Finding
+### Reachability
+
+Someone is reachable if `findPathsTo` returns a path — within `MAX_HOPS` (3).
+Frank, four introductions away, is not. That is a constant, not a setting:
+every introduction costs a human a yes.
+
+### Bottlenecks
+
+The nodes every path to a target passes through:
 
 ```javascript
-const paths = router.findPaths('user:alice', 'user:dave', {
-  maxHops: 5
-});
-// Result: all paths from Alice to Dave, sorted by length
+paths.map((p) => new Set(p.hops.slice(0, -1).map((h) => h.node)))
+     .reduce((acc, s) => new Set([...acc].filter((n) => s.has(n))));
 ```
 
-### 3. Network Analysis
+Every path to Erin runs through Dave; drop the edge that reaches Dave in two
+hops and Erin falls out of range.
 
-```javascript
-const structure = router.analyze();
-// Metrics: node count, edge count, diameter, components
+### Decay and renewal
+
+Trust is perishable and the format refuses to let you paper over it. There is
+no `expires` field; `freshness(edge, now)` is derived from `renewed` — fresh
+within 180 days, aging to 365, stale after. A stale edge still routes, but
+`effectiveStrength` caps it at `estimated`, and a path built on it carries that
+register in its own `trust`.
+
+Renewal is a human re-asserting the edge: `upsertEdge(graph, edge, now)`
+restarts the clock, keeps `asserted` as history, and unions provenance rather
+than replacing it.
+
+### Asymmetry
+
+`gina -> alice` is Gina's assertion. Traversed from Alice it is a **reversed**
+hop: allowed, downgraded to `estimated`, and the consent it needs is Gina's —
+she owns the edge.
+
+### Every number carries its register
+
+A path with one unrated hop has `trust: { value: null, register: 'unrated' }`
+— not the minimum over the rated hops. An unknown link is at least as weak as
+anything measured, and the router refuses to report otherwise.
+
+### "Revocation"
+
+`trust/1` has no revoke. An owner who no longer stands behind an edge drops it
+from their own graph (local-first: it is their data) or lets it decay. Graphs
+are plain values, so `{ ...graph, edges: graph.edges.filter(...) }` is the
+whole operation, and the original is untouched.
+
+## Running this example
+
+```bash
+npm run examples:graph
+npm test examples/07-graph-analysis
 ```
 
-### 4. Bottleneck Identification
+## Invariants tested
 
-```javascript
-const bottlenecks = router.findBottlenecks();
-// Result: holders that appear in many critical paths
-```
+- **Reachability bounded by `MAX_HOPS`** — six reachable, Frank not, an unknown id routes nothing
+- **Ranking** — the 2-hop path first; `rankPaths` is pure; each hop names its `consentOf`
+- **Bottleneck** — every path to Erin crosses Charlie and Dave
+- **Stale edge routes at estimated** — and the path's `trust.register` says so
+- **Renewal** — `renewed` today, `asserted` kept, one edge not two, path trust back to `asserted`
+- **Reversed hop** — `reversed: true`, `estimated`, consent of the person reached
+- **Unrated hop** — path trust `value: null`
+- **Dropping an edge** — reachability follows; the original graph is unchanged
 
-### 5. Revocation Impact
+## Use cases
 
-```javascript
-router.revokeEdge('user:bob', 'user:carol');
-const newReachable = router.findReachable('user:alice');
-// Result: reachability after edge revocation
-```
-
-## Use Cases
-
-| Use Case | Query |
-|----------|-------|
-| **Payment routing** | `findPaths(alice, dave)` - find route for settlement |
-| **Risk analysis** | `findBottlenecks()` - identify critical nodes |
-| **Network planning** | `analyze()` - understand connectivity |
-| **Access control** | `findReachable(alice)` - who can Alice reach? |
-| **Incident response** | `revokeEdge()` - block compromised node |
-
-## Test Coverage
-
-- Reachability queries (who can reach whom)
-- Shortest path finding (prefer fewer hops)
-- Revocation impact (connectivity after edge removal)
-- Bottleneck identification (critical nodes)
-
-## House Rules at Work
-
-| Rule | How It Appears |
-|------|---|
-| **Trust is explicit** | Edges exist only if registered (no implicit trust) |
-| **Opacity** | Declined paths don't leak information |
-| **Sealed outcomes** | Path digests are portable sha256 |
-| **Clarity** | Code shows the graph structure clearly |
-| **Audit trail** | Graph operations are logged |
-| **Immediate revocation** | Revoked edges take effect instantly |
-
-## Production Patterns
-
-- **Path caching:** Cache shortest paths but invalidate on revocation
-- **Load balancing:** Use bottleneck analysis to load-balance traffic
-- **Health checks:** Periodically verify critical paths still exist
-- **Alerting:** Alert if reachability drops unexpectedly
-
----
-
-**Read next:** Example 8 (Error Recovery) or Example 9 (Attenuation Chains).
+Network planning, deciding which relationships to renew before they decay,
+seeing which single person your reach depends on.

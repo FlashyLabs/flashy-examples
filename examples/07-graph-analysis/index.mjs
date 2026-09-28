@@ -1,127 +1,110 @@
-// Example 7: Graph Analysis
-//
-// Shows how to analyze trust graphs: find all reachable holders, discover paths,
-// identify bottlenecks, and verify graph connectivity.
-//
-// Pattern: register edges → query connectivity → find shortest paths → analyze
+/**
+ * Example 7: Graph Analysis
+ *
+ * Read a trust graph the way the router does: who is reachable, which paths
+ * exist, which node every path depends on, how decay and renewal move trust,
+ * and what happens when the owner stops standing behind an edge.
+ * Demonstrates: findPaths/findPathsTo, rankPaths, MAX_HOPS, reversed hops,
+ * freshness/effectiveStrength, upsertEdge, and the register on every number.
+ *
+ * There is no MagicianRouter class, no findReachable(), no revokeEdge(). The
+ * graph is a document the owner holds; the router is a pure traversal over it;
+ * the analyses below are folds over the Path[] it returns.
+ */
 
-import { MagicianRouter } from '@magician-network/core';
+import {
+  parseGraph, parseIntent, parseTrustEdge, findPaths, findPathsTo, MAX_HOPS,
+  freshness, effectiveStrength, upsertEdge,
+} from '@magician-network/core';
 
-async function graphAnalysisExample() {
-  console.log('⚡ Example 7: Graph Analysis\n');
+const NOW = new Date('2026-09-28T12:00:00Z');
+const P = (slug) => `person/${slug}`;
 
-  // Create router with graph store
-  const router = new MagicianRouter();
+const edge = (from, to, value, renewed = '2026-06-01') => ({
+  format: 'trust/1', from, to, tier: 'private', domains: [],
+  strength: { value, register: 'asserted' },
+  provenance: [{ kind: 'worked-with', at: '2026-01-15' }], asserted: '2026-01-15', renewed,
+});
+const person = (slug, capabilities = []) => ({ id: P(slug), name: `${slug} (demo)`, capabilities, demo: true });
 
-  // Step 1: Build a trust graph
-  console.log('Step 1: Build trust graph');
-  const edges = [
-    { from: 'user:alice', to: 'user:bob', tier: 'trusted' },
-    { from: 'user:bob', to: 'user:carol', tier: 'trusted' },
-    { from: 'user:carol', to: 'user:dave', tier: 'trusted' },
-    { from: 'user:alice', to: 'user:charlie', tier: 'friend' },
-    { from: 'user:charlie', to: 'user:dave', tier: 'trusted' }
-  ];
+export const DOCUMENT = {
+  format: 'magician-graph/1',
+  owner: P('alice'),
+  people: [
+    person('alice'), person('bob'), person('carol', ['cap/logistics']), person('charlie'),
+    person('dave', ['cap/robotics-manufacturing']), person('erin', ['cap/biotech']),
+    person('frank', ['cap/family-office']), person('gina', ['cap/sovereign-fund']),
+  ],
+  edges: [
+    edge(P('alice'), P('bob'), 0.8),
+    edge(P('bob'), P('carol'), 0.7),
+    edge(P('carol'), P('dave'), 0.9),
+    edge(P('alice'), P('charlie'), 0.6, '2024-09-01'), // stale: nobody renewed it in two years
+    edge(P('charlie'), P('dave'), 0.8),
+    edge(P('dave'), P('erin'), 0.7),
+    edge(P('erin'), P('frank'), 0.9),                  // four hops from Alice
+    edge(P('gina'), P('alice'), 0.9),                  // Gina asserts she knows Alice — not the other way
+  ],
+};
 
-  for (const edge of edges) {
-    router.addEdge({
-      from: edge.from,
-      to: edge.to,
-      tier: edge.tier,
-      bidirectional: false
-    });
-    console.log(`  ${edge.from} → ${edge.to} (${edge.tier})`);
-  }
-
-  // Step 2: Query all reachable holders from Alice
-  console.log('\nStep 2: Find all reachable holders from Alice');
-  const reachable = router.findReachable('user:alice');
-  console.log(`  Reachable from Alice: ${reachable.join(', ')}`);
-  for (const holder of reachable) {
-    const distance = router.distanceTo('user:alice', holder);
-    console.log(`    ${holder}: ${distance} hop${distance > 1 ? 's' : ''}`);
-  }
-
-  // Step 3: Find shortest paths to Dave
-  console.log('\nStep 3: Find shortest paths from Alice to Dave');
-  const paths = router.findPaths('user:alice', 'user:dave', {
-    maxHops: 5,
-    sortBy: 'length'
-  });
-
-  for (let i = 0; i < paths.length; i++) {
-    const path = paths[i];
-    const hopList = path.route.join(' → ');
-    console.log(`  Path ${i + 1} (${path.length} hops): ${hopList}`);
-  }
-
-  // Step 4: Analyze graph structure
-  console.log('\nStep 4: Analyze graph structure');
-  const structure = router.analyze();
-  console.log(`  Total nodes: ${structure.nodeCount}`);
-  console.log(`  Total edges: ${structure.edgeCount}`);
-  console.log(`  Connected components: ${structure.connectedComponents}`);
-  console.log(`  Diameter: ${structure.diameter} hops (longest shortest path)`);
-
-  // Step 5: Identify bottlenecks (holders that appear in many shortest paths)
-  console.log('\nStep 5: Identify bottlenecks');
-  const bottlenecks = router.findBottlenecks();
-  for (const { holder, pathCount } of bottlenecks) {
-    console.log(`  ${holder}: appears in ${pathCount} critical paths`);
-  }
-
-  // Step 6: Measure network resilience
-  console.log('\nStep 6: Network resilience');
-  const resilience = router.analyzeResilience();
-  console.log(`  Average path length: ${resilience.averagePathLength.toFixed(2)} hops`);
-  console.log(`  Network redundancy: ${resilience.redundancyFactor}x`);
-  console.log(`  Single point of failure: ${resilience.criticalNodes.length > 0 ? 'YES' : 'NO'}`);
-  if (resilience.criticalNodes.length > 0) {
-    console.log(`    Critical: ${resilience.criticalNodes.join(', ')}`);
-  }
-
-  // Step 7: Verify consent requirements
-  console.log('\nStep 7: Verify consent requirements for path');
-  const bestPath = paths[0];
-  const consentsNeeded = bestPath.route.length - 1;  // each hop except first
-  console.log(`  Path: ${bestPath.route.join(' → ')}`);
-  console.log(`  Consents needed: ${consentsNeeded}`);
-  for (let i = 0; i < bestPath.route.length - 1; i++) {
-    const from = bestPath.route[i];
-    const to = bestPath.route[i + 1];
-    console.log(`    ${from} → ${to}: need consent from ${from}`);
-  }
-
-  // Step 8: Test path viability (all edges exist and are not revoked)
-  console.log('\nStep 8: Check path viability');
-  const viable = router.isPathViable(bestPath.route);
-  console.log(`  Path viable: ${viable ? '✓' : '✗'}`);
-
-  // Step 9: Simulate edge revocation and analyze impact
-  console.log('\nStep 9: Simulate edge revocation (Bob → Carol)');
-  router.revokeEdge('user:bob', 'user:carol');
-  const reachableAfter = router.findReachable('user:alice');
-  console.log(`  Reachable before: ${reachable.length} holders`);
-  console.log(`  Reachable after: ${reachableAfter.length} holders`);
-  if (reachableAfter.length < reachable.length) {
-    const lost = reachable.filter(h => !reachableAfter.includes(h));
-    console.log(`  Lost access to: ${lost.join(', ')}`);
-  }
-
-  // Step 10: Find alternative paths after revocation
-  console.log('\nStep 10: Find alternative paths after revocation');
-  const altPaths = router.findPaths('user:alice', 'user:dave', { maxHops: 5 });
-  if (altPaths.length > 0) {
-    console.log(`  ${altPaths.length} path${altPaths.length > 1 ? 's' : ''} still available:`);
-    for (const path of altPaths) {
-      console.log(`    ${path.route.join(' → ')}`);
-    }
-  } else {
-    console.log(`  ✗ No paths available to Dave`);
-  }
-
-  console.log('\n✅ Graph analysis complete\n');
+/** Everyone the owner can reach within MAX_HOPS, with the fewest introductions it takes. */
+function reachability(graph) {
+  return graph.people
+    .filter((p) => p.id !== graph.owner)
+    .map((p) => ({ id: p.id, paths: findPathsTo(graph, new Set([p.id]), NOW) }))
+    .map(({ id, paths }) => ({ id, reachable: paths.length > 0, hops: paths[0]?.introductions ?? null }));
 }
 
-// Run the example
-await graphAnalysisExample();
+/** Nodes every path to a target passes through — remove one and the target is gone. */
+function bottlenecks(paths) {
+  const [first, ...rest] = paths.map((p) => new Set(p.hops.slice(0, -1).map((h) => h.node)));
+  if (!first) return [];
+  return [...first].filter((n) => rest.every((s) => s.has(n)));
+}
+
+function main() {
+  console.log('=== Graph Analysis ===\n');
+  const graph = parseGraph(JSON.stringify(DOCUMENT));
+
+  console.log(`1. Reachability from ${graph.owner} (MAX_HOPS = ${MAX_HOPS})`);
+  for (const r of reachability(graph)) {
+    console.log(`   ${r.id.padEnd(16)} ${r.reachable ? `${r.hops} hop(s)` : 'unreachable — beyond three introductions'}`);
+  }
+  console.log('');
+
+  console.log('2. Every path to Dave, ranked: match, then fewest introductions, then trust');
+  const toDave = findPathsTo(graph, new Set([P('dave')]), NOW);
+  for (const p of toDave) {
+    console.log(`   ${p.hops.map((h) => h.node.slice(7)).join(' -> ').padEnd(28)} trust ${p.trust.value} (${p.trust.register})`);
+  }
+  console.log('   the 2-hop path wins on hop count, yet its trust reads estimated: its first edge is stale\n');
+
+  console.log('3. Bottlenecks: whom does every path to Erin depend on?');
+  const toErin = findPathsTo(graph, new Set([P('erin')]), NOW);
+  console.log(`   ${toErin.length} path(s); every one passes through: ${bottlenecks(toErin).join(', ')}\n`);
+
+  console.log('4. Decay is derived, renewal is human');
+  const stale = graph.edges.find((e) => e.to === P('charlie'));
+  console.log(`   alice -> charlie renewed ${stale.renewed}: ${freshness(stale, NOW)}, contributes at ${effectiveStrength(stale, NOW).register}`);
+  const renewed = upsertEdge(graph, parseTrustEdge(edge(P('alice'), P('charlie'), 0.6)), NOW);
+  const fresh = renewed.edges.find((e) => e.to === P('charlie'));
+  console.log(`   after Alice re-asserts it today: renewed ${fresh.renewed}, ${freshness(fresh, NOW)}, provenance kept (${fresh.provenance.length} event)`);
+  const [best] = findPathsTo(renewed, new Set([P('dave')]), NOW);
+  console.log(`   the 2-hop path to Dave now reads ${best.trust.value} (${best.trust.register})\n`);
+
+  console.log('5. Trust is asymmetric: crossing an edge backwards is a guess');
+  const intent = parseIntent({ id: 'sovereign', text: 'Reach a sovereign fund for a co-investment', wants: ['cap/sovereign-fund'], opened: '2026-09-20' });
+  const [viaGina] = findPaths(graph, intent, NOW);
+  const hop = viaGina.hops[0];
+  console.log(`   gina -> alice is Gina's assertion; reached from Alice it is reversed=${hop.reversed}, ` +
+    `register ${hop.strength.register}, and the consent is ${hop.consentOf}'s\n`);
+
+  console.log('6. There is no revoke: an owner stops standing behind an edge by dropping it from their graph');
+  const without = { ...graph, edges: graph.edges.filter((e) => !(e.from === P('alice') && e.to === P('charlie'))) };
+  console.log(`   paths to Dave: ${toDave.length} -> ${findPathsTo(without, new Set([P('dave')]), NOW).length}`);
+  console.log(`   Erin reachable: ${toErin.length > 0} -> ${findPathsTo(without, new Set([P('erin')]), NOW).length > 0} (now four hops away)\n`);
+
+  console.log('=== Graph Analysis Complete ===\n');
+}
+
+main();

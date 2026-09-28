@@ -1,137 +1,111 @@
-# Example 4: FlashyID OAuth & Delegation
+# Example 4: FlashyID Assertions & Delegation
 
-Learn identity, authentication, and the delegation pattern for fine-grained authorization.
+Signed assertions, verified without a secret, carrying delegation chains that
+only ever narrow — with `@flashyid/sdk`.
 
-## Why Delegation?
+## What the SDK is, and is not
 
-Traditional authorization grants all-or-nothing access: either you can do something or you can't.
+**There is no OAuth client in `@flashyid/sdk`.** No `FlashyIDClient`, no
+`initAuthFlow()`, no `exchangeCode()`. The browser redirect dance — PKCE,
+authorization code, token endpoint — is the OIDC *provider's* job
+(`id.flashyid.com`, an `oidc-provider` service in the flashyID repository). An
+earlier revision of this example called those methods; they never existed, and
+this README said so only after the audit.
 
-Delegation is **attenuation**: a child grant is always narrower than its parent.
+What the SDK gives you is the two halves either side of that dance:
+
+- **The relying-party surface** — `verifyAssertion` (is this genuinely from
+  Flashy ID?) and `authorize` (does the delegation it carries permit *this*
+  action?). It holds only the public JWKS and can never mint.
+- **The issuer half** — `signAssertion`, the EdDSA JWS the issuer produces,
+  exported so the round trip is the SDK's own test.
+- **The grant kernel** — `issueRoot`, `attenuate`, `verifyChain`, `permits`.
+  Pure functions over a delegation chain. Time is an argument (`nowSec`),
+  never a clock.
+
+This example runs the issuer and the relying party in one process so the loop
+is visible. The private key still never reaches the verifying side.
+
+## The chain
+
+A grant is not a token; it is a **chain**, root-first. Link 0 is issued from
+the accountable human (a charter's `accountableTo`); every link below is an
+attenuation to a new holder, and no link may grant more than the one above.
 
 ```javascript
-// Parent grant: can spend up to $1000, expires in 1 year
-const parent = { cap: 1000, expiry: yearFromNow };
-
-// Child grant: can spend only $50, expires in 1 month
-const child = attenuate(parent, {
-  cap: 50,      // ✅ Narrower
-  expiry: monthFromNow  // ✅ Earlier
+const root = issueRoot({
+  rootHuman: 'alice@example.com', holder: 'org/demo-acme',
+  scp: ['payment.draft', 'payment.execute', 'report.read'],
+  res: ['ledger:demo-acme'],
+  lim: { approval_at_or_above: 'HIGH', spend_max: 100_000 },   // minor units
+  iat, exp, jti: 'root-1',
 });
 
-// ❌ Cannot do this:
-attenuate(parent, { cap: 2000 }); // ERROR: widening
-```
-
-## OAuth 2.1 / OIDC Flow
-
-FlashyID uses standard OAuth for authentication:
-
-```
-1. User clicks "Login with FlashyID"
-2. Browser redirects to https://id.flashyid.com/authorize
-3. User enters credentials
-4. FlashyID redirects back with authorization code
-5. App exchanges code for ID token (JWT)
-6. App verifies token signature with FlashyID's public key
-```
-
-## Delegation Grants
-
-After auth, you can mint attenuated grants:
-
-```javascript
-// Full grant: can do anything the user authorized
-const fullGrant = mintGrant(user, { cap: fullAuthority });
-
-// Attenuate for a specific use case
-const delegatedGrant = attenuate(fullGrant, {
-  cap: limited_authority,
-  expiry: sooner
+const chain = attenuate(root, {
+  holder: agentSubject('demo-acme', 'payments'),               // 'agent:demo-acme/payments'
+  scp: ['payment.draft', 'report.read'],                       // ⊆ parent
+  lim: { approval_at_or_above: 'HIGH', spend_max: 5_000 },     // no looser than parent
+  iat, exp: iat + 86_400, jti: 'agent-1',                      // capped at the parent's
 });
-
-// Pass delegated grant to untrusted code
-// Even if that code is compromised, damage is bounded
 ```
 
-## Key Constraints
+**`attenuate` refuses by returning, not throwing.** A widening comes back as
+`{ ok: false, code: 'chain_widened', at, detail }`. Scope, resource, spend
+ceiling and the approval bar can each only tighten; dropping a required
+approval bar is a widening. Expiry is the one field capped rather than refused:
+a child asking to outlive its parent gets the parent's expiry.
 
-**Attenuation, not inheritance:**
+## The assertion
+
 ```javascript
-// ✅ Correct
-attenuate(grant, { cap: lessPermissive, expiry: sooner });
+// issuer
+const jws = await signAssertion({ privateKey, issuer, audience, subject: agent, delegation: chain });
 
-// ❌ Wrong
-attenuate(grant, { cap: morePermissive }); // Throws
+// relying party — public key only; in production, the issuer's /.well-known/jwks.json
+const assertion = await verifyAssertion(jws, { issuer, audience, getKey: publicKey });
+// { sub, del, claims } — or null for a bad signature, wrong iss/aud, expiry: never a throw
 ```
 
-**Revocation is immediate:**
+## `authorize` — genuine, and permitted?
+
 ```javascript
-revoke(grant);
-// Any operation using this grant immediately fails
+const { result } = await authorize(jws, { scope: 'payment.draft', amount: 1_240 }, { issuer, audience, getKey, nowSec });
+result.ok                 // true: the effective grant (holder, root, scp, lim, exp)
+// or a refusal with a code from the published vocabulary:
+//   out_of_mandate     scope/resource not granted, or amount over spend_max
+//   approval_required  in mandate, but at/above the human-approval bar
+//   revoked | expired | broken_chain | empty_chain | untrusted_root
 ```
 
-**Delegation chain is audited:**
-```javascript
-// Each attenuation is logged
-// Can trace authority back to original grant
-chain = grant.delegationChain();
-// [{ action: 'mint', by: 'user', at: ... },
-//  { action: 'attenuate', by: 'app1', at: ... },
-//  { action: 'attenuate', by: 'app2', at: ... }]
-```
+The approval bar is enforced inside `permits`: a demand at or above the chain's
+`approval_at_or_above` is refused with `approval_required`, never silently
+allowed. The enforcement gate (`evaluateGrant`) is the one caller that can
+route to a human, so it maps that refusal — and only that one — to `ESCALATE`;
+everything else stays `DENY` with the kernel's code.
 
-## Running This Example
+## Running this example
 
 ```bash
 npm run examples:flashyid
 npm test examples/04-flashyid-oauth
 ```
 
-## Code Walkthrough
+An Ed25519 keypair comes from `node:crypto`'s `generateKeyPairSync`; `jose`
+(the SDK's one dependency) accepts the `KeyObject` directly.
 
-```javascript
-// 1. Start OAuth flow
-const { authUrl } = initOAuthFlow({
-  redirectUri: 'https://app.example.com/callback',
-  scope: ['openid', 'profile', 'email']
-});
+## Invariants tested
 
-// User clicks link, authenticates...
+- **Sign then verify round-trips** — `sub` and `del` come back exactly
+- **Verification never throws** — wrong audience, wrong issuer, another key, a tampered payload, no token: all `null`
+- **Attenuation only narrows** — scope, resource, ceiling, approval bar; refusal returned as `chain_widened` at the offending index
+- **A child never outlives its parent** — expiry capped; effective expiry is the chain minimum
+- **`authorize` refuses specifically** — `out_of_mandate`, `approval_required`, and `null` at the wrong audience
+- **The gate** — `ESCALATE` for `approval_required`, `ALLOW` below the bar, `DENY` with the code otherwise
+- **Leaf holder must be the subject** — an org presenting its agent's chain is `broken_chain`
+- **Revocation walks down; expiry at `nowSec`** — root revoked refuses at link 0; the agent link expires while the root stands
+- **No delegation, no authority** — `empty_chain`
 
-// 2. Exchange code for token
-const { idToken, accessToken } = await exchangeCode(code);
+## Next steps
 
-// 3. Verify token signature
-const user = verifyIdToken(idToken, flashyidPublicKey);
-
-// 4. Mint grant for user
-const grant = mintGrant(user.sub, {
-  cap: fullAuthority,
-  expiry: Date.now() + 365 * 24 * 60 * 60 * 1000
-});
-
-// 5. Attenuate for specific purpose
-const limitedGrant = attenuate(grant, {
-  cap: limited_authority,
-  expiry: Date.now() + 24 * 60 * 60 * 1000
-});
-
-// 6. Use in operation
-const result = executeWithGrant(operation, limitedGrant);
-```
-
-## Invariants Tested
-
-✅ **Token signature verifies** — cannot forge  
-✅ **Attenuation narrows scope** — never widens  
-✅ **Revocation is immediate** — any operation fails  
-✅ **Delegation is auditable** — full chain recorded  
-✅ **Expiry is enforced** — expired grants refuse operations  
-✅ **Subject binding** — grant is tied to specific user  
-
-## Next Steps
-
-Once comfortable with identity and delegation:
-1. Move to Example 5 to wire it all together
-2. Build a production auth flow
-3. Implement attenuated access control policies
+1. Example 5 wires an assertion, an introduction and a consent-gated transfer together
+2. Example 9 walks a four-link chain and its cascading revocation

@@ -1,95 +1,111 @@
 /**
  * Example 2: Rails Consent Flow
  *
- * Learn the consent gate: draft, get approval, execute atomically.
- * Demonstrates: drafting transfers, consent tokens, execution, attenuation.
+ * The consent gate: an agent drafts, the holder consents, then value moves.
+ * Demonstrates: draftTransfer -> approve -> execute, consent bound to one
+ * draft, idempotent execution, and attenuated grants that never widen.
+ *
+ * Flashy Rails is a thin service over a @flashylabs/ledger store. Amounts at
+ * its edge are person-facing decimals (numbers); the ledger sees Minor units.
+ * toMinor(25) is 2500 — a number in, an integer out. Never a string.
  */
 
-import { Rails, toMinor, toGold } from '@flashylabs/rails';
+import { InMemoryLedgerStore } from '@flashylabs/ledger';
+import {
+  RailsService, approve, issueGrant, attenuate, revoke,
+  toMinor, toGold, FLASHY_GOLD_ID,
+} from '@flashylabs/rails';
 
-async function getApprovalFromUser(draft) {
-  // In a real app, this would show a UI and wait for user click.
-  // For this example, we simulate user approval.
-  console.log(`   [USER] Approves: ${toGold(draft.amount)} ${draft.asset}`);
-  return await Rails.createConsentToken(draft);
+const ALICE = 'hunter_a1';
+const BOB = 'hunter_b2';
+
+/** In a real app this is a person tapping "Approve". Nothing here can approve for them. */
+function holderApproves(draft, holderId) {
+  console.log(`   [${holderId}] approves "${draft.id}" for ${toGold(draft.amountMinor)} Gold`);
+  return approve(draft, holderId, new Date());
 }
 
 async function main() {
   console.log('=== Rails Consent Flow ===\n');
 
-  const rails = new Rails();
+  const store = new InMemoryLedgerStore();
+  const rails = new RailsService({ store });
 
-  // Set up initial balances
-  console.log('1. Setting up initial balances...');
-  await rails.issue('alice', 'flashy-gold', toMinor('100.00'));
-  await rails.issue('bob', 'flashy-gold', toMinor('50.00'));
-  console.log('   ✓ Alice: 100 Gold, Bob: 50 Gold\n');
+  console.log('1. Rewards are rule-bound: an earn needs a source and an idempotency key');
+  await rails.earn({ identityId: ALICE, amount: 100, source: { type: 'quest', id: 'q1' }, idempotencyKey: 'quest:q1:a1' });
+  await rails.earn({ identityId: BOB, amount: 50, source: { type: 'quest', id: 'q1' }, idempotencyKey: 'quest:q1:b2' });
+  console.log(`   Alice: ${(await rails.balance(ALICE)).gold} Gold, Bob: ${(await rails.balance(BOB)).gold} Gold\n`);
 
-  // Draft a transfer (pure, no side effects)
-  console.log('2. Drafting transfer: Alice → Bob (25 Gold)...');
+  console.log('2. Draft a transfer (pure — writes nothing)');
   const draft = rails.draftTransfer({
-    from: 'alice',
-    to: 'bob',
-    asset: 'flashy-gold',
-    amount: toMinor('25.00'),
-    reason: 'Payment for services'
+    fromId: ALICE, toId: BOB, amount: 25,
+    source: { type: 'payment', id: 'inv-1' }, idempotencyKey: 'inv-1',
   });
-  console.log(`   ✓ Draft created (ID: ${draft.id})`);
-  console.log(`   ✓ Alice still holds: ${await rails.getBalance('alice', 'flashy-gold')}\n`);
+  console.log(`   draft ${draft.id}: ${draft.identityId} -> ${draft.toId}, ${draft.amountMinor} minor units`);
+  console.log(`   Alice still holds ${(await rails.balance(ALICE)).gold} Gold; store has ${store.size} entries\n`);
 
-  // Get approval from user
-  console.log('3. Getting user approval...');
-  const consentToken = await getApprovalFromUser(draft);
-  console.log('   ✓ Consent token received\n');
-
-  // Execute the transfer
-  console.log('4. Executing transfer with consent...');
-  await rails.execute(draft, consentToken);
-  console.log(`   ✓ Transfer executed (ledger sealed)\n`);
-
-  // Verify balances
-  console.log('5. Verifying final balances...');
-  const aliceBalance = await rails.getBalance('alice', 'flashy-gold');
-  const bobBalance = await rails.getBalance('bob', 'flashy-gold');
-  console.log(`   ✓ Alice: ${toGold(aliceBalance)} Gold`);
-  console.log(`   ✓ Bob: ${toGold(bobBalance)} Gold\n`);
-
-  // Demonstrate idempotency: replay execution
-  console.log('6. Replaying execution (idempotency)...');
-  await rails.execute(draft, consentToken);
-  const aliceReplay = await rails.getBalance('alice', 'flashy-gold');
-  console.log(`   ✓ Alice balance after replay: ${toGold(aliceReplay)} Gold (unchanged)\n`);
-
-  // Demonstrate attenuation: narrow a grant
-  console.log('7. Creating attenuated grant...');
-  const fullGrant = rails.createGrant('alice', {
-    cap: toMinor('100.00'),
-    expiry: Date.now() + 1000000
-  });
-
-  const attenuatedGrant = rails.attenuate(fullGrant, {
-    cap: toMinor('10.00'), // Narrower cap
-    expiry: fullGrant.expiry
-  });
-  console.log(`   ✓ Full grant cap: ${toGold(fullGrant.cap)} Gold`);
-  console.log(`   ✓ Attenuated grant cap: ${toGold(attenuatedGrant.cap)} Gold\n`);
-
-  // Try to widen (should fail)
-  console.log('8. Attempting to widen grant (should fail)...');
+  console.log('3. Execute without consent — refused');
   try {
-    rails.attenuate(attenuatedGrant, {
-      cap: toMinor('50.00'), // Trying to widen
-      expiry: attenuatedGrant.expiry
-    });
-    console.log('   ✗ ERROR: Should have rejected widening!\n');
+    await rails.execute(draft, null);
   } catch (err) {
-    console.log(`   ✓ Correctly rejected: ${err.message}\n`);
+    console.log(`   ${err.code}: ${err.message}\n`);
   }
+
+  console.log('4. The holder consents, then the transfer settles');
+  const consent = holderApproves(draft, ALICE);
+  const results = await rails.execute(draft, consent);
+  console.log(`   ${results.length} entries landed atomically (${results.map((r) => r.entry.kind).join(', ')})`);
+  console.log(`   Alice: ${(await rails.balance(ALICE)).gold} Gold, Bob: ${(await rails.balance(BOB)).gold} Gold\n`);
+
+  console.log('5. Replay the execution (same draft, same consent)');
+  const replay = await rails.execute(draft, consent);
+  console.log(`   deduplicated: ${replay.every((r) => r.deduplicated)} — settled once, not twice`);
+  console.log(`   Alice: ${(await rails.balance(ALICE)).gold} Gold\n`);
+
+  console.log('6. A consent is bound to ONE draft — it cannot authorise another');
+  const other = rails.draftTransfer({ fromId: ALICE, toId: BOB, amount: 25, source: { type: 'payment', id: 'inv-2' }, idempotencyKey: 'inv-2' });
+  try {
+    await rails.execute(other, consent);
+  } catch (err) {
+    console.log(`   ${err.code}: ${err.message}\n`);
+  }
+
+  console.log('7. Delegated spend: Alice grants a cafe up to 20 Gold for coffee');
+  const cafe = issueGrant({
+    grantId: 'g-cafe', holderId: ALICE, spenderId: 'org/demo-cafe',
+    assetId: FLASHY_GOLD_ID, capMinor: toMinor(20), purpose: 'coffee',
+  });
+  const kiosk = attenuate(cafe, { grantId: 'g-kiosk', spenderId: 'org/demo-cafe-kiosk', capMinor: toMinor(5) });
+  console.log(`   cafe cap ${toGold(cafe.capMinor)} Gold -> kiosk cap ${toGold(kiosk.capMinor)} Gold (parent ${kiosk.parentGrantId})`);
+
+  const { grant: after } = await rails.spendUnderGrant({
+    grant: kiosk, amount: 3, source: { type: 'purchase', id: 'latte-1' }, idempotencyKey: 'latte-1',
+  });
+  console.log(`   kiosk spent 3 Gold; remaining ${toGold(after.remainingMinor)} Gold; Alice: ${(await rails.balance(ALICE)).gold} Gold\n`);
+
+  console.log('8. Widening is refused: a child can never hold what its parent lacks');
+  try {
+    attenuate(kiosk, { grantId: 'g-wide', spenderId: 'org/demo-cafe', capMinor: toMinor(50) });
+  } catch (err) {
+    console.log(`   ${err.code}: ${err.message}\n`);
+  }
+
+  console.log('9. Revocation is immediate');
+  const revoked = revoke(after);
+  try {
+    await rails.spendUnderGrant({ grant: revoked, amount: 1, source: { type: 'purchase', id: 'latte-2' }, idempotencyKey: 'latte-2' });
+  } catch (err) {
+    console.log(`   ${err.code}: ${err.message}\n`);
+  }
+
+  console.log('10. The books reconcile: every entry hashed, chained, settling to the balance');
+  const report = await rails.reconcile(ALICE);
+  console.log(`   ok: ${report.ok}, entries: ${report.entries}, balance: ${toGold(report.balance)} Gold\n`);
 
   console.log('=== Rails Consent Flow Example Complete ===\n');
 }
 
-main().catch(err => {
+main().catch((err) => {
   console.error('Error:', err);
   process.exit(1);
 });

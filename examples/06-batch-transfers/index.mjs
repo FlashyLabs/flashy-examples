@@ -1,116 +1,111 @@
-// Example 6: Batch Transfers
-//
-// Shows how to execute multiple transfers atomically. Either all succeed
-// or none do (atomic semantics). Demonstrates idempotency for batch operations.
-//
-// Pattern: draft all transfers → collect all consents → execute atomically
-// (no partial success, no half-committed state)
+/**
+ * Example 6: Batch Transfers
+ *
+ * Alice pays three people. Two honest ways to do it, with different guarantees:
+ *
+ *   A. Through Rails' consent gate — one draft per transfer, one consent per
+ *      draft (a consent binds exactly one draft), each transfer atomic on its
+ *      own. The BATCH is sequential: a failure mid-way leaves earlier
+ *      transfers settled. Rails has no batch primitive today, and this example
+ *      says so rather than pretending one consent covers three drafts.
+ *
+ *   B. Straight onto the ledger — post every entry against a running state in
+ *      the pure domain, then appendAll() once. A shortfall throws in post()
+ *      before anything is written, so the batch lands whole or not at all.
+ *      This bypasses Rails' gate: the application must hold the holder's
+ *      consent for the batch itself before taking this path.
+ *
+ * Demonstrates: draft -> approve -> execute in a loop, idempotent replay, the
+ * running-state pattern for appendAll, and where atomicity really lives.
+ */
 
-import { Ledger } from '@flashylabs/ledger';
-// toMinor/toGold are Rails exports (src/gold.mjs), not ledger ones.
-import { Rails, toMinor, toGold } from '@flashylabs/rails';
+import { InMemoryLedgerStore, postTransfer } from '@flashylabs/ledger';
+import { RailsService, approve, toMinor, toGold, flashyGold, FLASHY_TENANT } from '@flashylabs/rails';
 
-async function batchTransferExample() {
-  console.log('⚡ Example 6: Batch Transfers\n');
+const ALICE = 'hunter_a1';
+const PAYROLL = [
+  { id: 'hunter_b2', amount: 100 },
+  { id: 'hunter_c3', amount: 100 },
+  { id: 'hunter_d4', amount: 150 },
+];
+const NOW = new Date();
 
-  // Setup: Create ledger and rails with audit logging
-  const ledger = new Ledger({
-    store: new Map(),  // in-memory for this example
-    auditLog: true
-  });
-
-  const rails = new Rails({
-    ledger,
-    auditLog: true
-  });
-
-  // Step 1: Register asset
-  console.log('Step 1: Register asset');
-  await ledger.registerAsset({ symbol: 'USD', decimals: 2 });
-
-  // Step 2: Issue starting balance to Alice
-  const aliceId = 'user:alice';
-  const initialBalance = toMinor('500.00');  // $500
-  await ledger.issue(aliceId, 'USD', initialBalance);
-  console.log(`  Alice balance: ${toGold(await ledger.getBalance(aliceId, 'USD'))}`);
-
-  // Step 3: Define multiple recipients (payroll scenario)
-  const recipients = [
-    { id: 'user:bob', amount: toMinor('100.00') },
-    { id: 'user:carol', amount: toMinor('100.00') },
-    { id: 'user:dave', amount: toMinor('150.00') }
-  ];
-
-  console.log('\nStep 2: Draft all transfers (no settlement yet)');
-  const drafts = [];
-  for (const recipient of recipients) {
-    const draft = rails.draftTransfer({
-      from: aliceId,
-      to: recipient.id,
-      asset: 'USD',
-      amount: recipient.amount
-    });
-    drafts.push({ draft, recipient });
-    console.log(`  ${recipient.id}: ${toGold(recipient.amount)}`);
-  }
-
-  // Step 4: Collect consent for all transfers
-  // In production, this would come from Alice (she approves all transfers)
-  console.log('\nStep 3: Collect consent for all transfers');
-  const consents = [];
-  for (const { draft } of drafts) {
-    // Simulate approval from Alice
-    const consentToken = rails.createConsentToken(draft, aliceId);
-    consents.push({ consentToken });
-    console.log(`  ✓ Consent collected for ${draft.to}`);
-  }
-
-  // Step 5: Execute all transfers atomically
-  // This pattern ensures: all succeed or all fail (no partial state)
-  console.log('\nStep 4: Execute all transfers atomically');
-  const results = [];
-  for (let i = 0; i < drafts.length; i++) {
-    const { draft } = drafts[i];
-    const { consentToken } = consents[i];
-    const result = rails.execute(draft, consentToken);
-    results.push(result);
-    console.log(`  ✓ ${draft.to}: settled`);
-  }
-
-  // Step 6: Verify final balances
-  console.log('\nStep 5: Verify final balances');
-  const aliceBalance = await ledger.getBalance(aliceId, 'USD');
-  console.log(`  Alice: ${toGold(aliceBalance)} (spent ${toGold(initialBalance - aliceBalance)})`);
-
-  for (const recipient of recipients) {
-    const balance = await ledger.getBalance(recipient.id, 'USD');
-    console.log(`  ${recipient.id}: ${toGold(balance)}`);
-  }
-
-  // Step 7: Verify audit trail
-  console.log('\nStep 6: Audit trail');
-  const history = await ledger.getHistory(aliceId, 'USD');
-  console.log(`  Total operations: ${history.length}`);
-  for (const op of history) {
-    console.log(`    ${op.type}: ${op.amount} units at ${new Date(op.timestamp).toISOString()}`);
-  }
-
-  // Step 8: Demonstrate idempotency
-  // If we replay the same transfer with the same digest, it's rejected
-  console.log('\nStep 7: Verify idempotency (reject replayed transfer)');
-  const replayDraft = drafts[0].draft;
-  const replayConsent = consents[0].consentToken;
-
-  try {
-    // This should fail because we're replaying the same operation
-    rails.execute(replayDraft, replayConsent);
-    console.log('  ❌ Replay was accepted (should have been rejected)');
-  } catch (err) {
-    console.log(`  ✓ Replay rejected: ${err.message}`);
-  }
-
-  console.log('\n✅ Batch transfers complete\n');
+async function fund(rails, amount) {
+  await rails.earn({ identityId: ALICE, amount, source: { type: 'quest', id: 'q1' }, idempotencyKey: `quest:q1:${ALICE}` });
 }
 
-// Run the example
-await batchTransferExample();
+async function main() {
+  console.log('=== Batch Transfers ===\n');
+
+  console.log('A. Through the consent gate: one draft, one consent, one atomic transfer — each');
+  const store = new InMemoryLedgerStore();
+  const rails = new RailsService({ store });
+  await fund(rails, 500);
+  console.log(`   Alice starts with ${(await rails.balance(ALICE)).gold} Gold`);
+
+  console.log('   1. Draft every transfer (pure — nothing written)');
+  const drafts = PAYROLL.map((p) => rails.draftTransfer({
+    fromId: ALICE, toId: p.id, amount: p.amount,
+    source: { type: 'payroll', id: '2026-09' }, idempotencyKey: `payroll:2026-09:${p.id}`,
+  }));
+  console.log(`      ${drafts.length} drafts, store still holds ${store.size} entry`);
+
+  console.log('   2. Alice consents to each draft — a consent is bound to ONE draft id');
+  const consents = drafts.map((d) => approve(d, ALICE, NOW));
+
+  console.log('   3. Execute each; the debit and credit of each transfer land together');
+  for (const [i, draft] of drafts.entries()) {
+    const results = await rails.execute(draft, consents[i]);
+    console.log(`      ${draft.toId}: ${toGold(draft.amountMinor)} Gold (${results.map((r) => r.entry.kind).join(' + ')})`);
+  }
+  console.log(`   Alice: ${(await rails.balance(ALICE)).gold} Gold; ` +
+    (await Promise.all(PAYROLL.map(async (p) => `${p.id}: ${(await rails.balance(p.id)).gold}`))).join(', '));
+
+  console.log('   4. Replaying the batch settles nothing twice');
+  const replays = await Promise.all(drafts.map((d, i) => rails.execute(d, consents[i])));
+  console.log(`      all deduplicated: ${replays.every((rs) => rs.every((r) => r.deduplicated))}\n`);
+
+  console.log('B. Straight onto the ledger: all-or-nothing, at the cost of Rails\' gate');
+  const gold = flashyGold();
+  const ref = (identityId) => ({ tenantId: FLASHY_TENANT, identityId, assetId: gold.id });
+  const store2 = new InMemoryLedgerStore();
+  const rails2 = new RailsService({ store: store2 });
+  await fund(rails2, 200);
+  console.log(`   Alice starts with ${(await rails2.balance(ALICE)).gold} Gold; payroll totals ${toGold(PAYROLL.reduce((s, p) => s + toMinor(p.amount), 0))}`);
+
+  /** Post every transfer against a RUNNING sender state; return the entries or throw before any write. */
+  async function batchEntries(store, recipients, period) {
+    let senderState = await store.readState(ref(ALICE));
+    const entries = [];
+    for (const p of recipients) {
+      const toState = await store.readState(ref(p.id));
+      const [debit, credit] = postTransfer(
+        { state: senderState, identityId: ALICE },
+        { state: toState, identityId: p.id },
+        { tenantId: FLASHY_TENANT, asset: gold, amount: toMinor(p.amount), source: { type: 'payroll', id: period }, idempotencyKey: `payroll:${period}:${p.id}`, occurredAt: NOW },
+      );
+      entries.push(debit, credit);
+      senderState = { balance: debit.balanceAfter, headHash: debit.hash }; // chain the next debit onto this one
+    }
+    return entries;
+  }
+
+  console.log('   1. A batch that does not fit is refused in post(), before appendAll');
+  try {
+    await store2.appendAll(await batchEntries(store2, PAYROLL, '2026-09'));
+  } catch (err) {
+    console.log(`      ${err.code}; store holds ${store2.size} entry — nobody was paid`);
+  }
+
+  console.log('   2. A batch that fits lands in one appendAll');
+  const smaller = PAYROLL.map((p) => ({ ...p, amount: 50 }));
+  const results = await store2.appendAll(await batchEntries(store2, smaller, '2026-09'));
+  console.log(`      ${results.length} entries landed; Alice: ${(await rails2.balance(ALICE)).gold} Gold; books reconcile: ${(await rails2.reconcile(ALICE)).ok}\n`);
+
+  console.log('=== Batch Transfers Complete ===\n');
+}
+
+main().catch((err) => {
+  console.error('Error:', err);
+  process.exit(1);
+});

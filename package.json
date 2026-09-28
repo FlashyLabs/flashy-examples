@@ -14,7 +14,12 @@
     "examples:rails": "node examples/02-rails-consent/index.mjs",
     "examples:magician": "node examples/03-magician-intro/index.mjs",
     "examples:flashyid": "node examples/04-flashyid-oauth/index.mjs",
-    "examples:combined": "node examples/05-combined-workflow/index.mjs"
+    "examples:combined": "node examples/05-combined-workflow/index.mjs",
+    "examples:batch": "node examples/06-batch-transfers/index.mjs",
+    "examples:graph": "node examples/07-graph-analysis/index.mjs",
+    "examples:errors": "node examples/08-error-recovery/index.mjs",
+    "examples:attenuation": "node examples/09-attenuation-chains/index.mjs",
+    "examples:perf": "node examples/10-performance/index.mjs"
   },
   "dependencies": {
     "@flashylabs/ledger": "^1.0.0",

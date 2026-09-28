@@ -1,131 +1,175 @@
-// Example 8: Error Recovery
-//
-// Shows how to handle errors gracefully: hop declination, revoked grants,
-// insufficient balance, and how to implement retry logic.
+/**
+ * Example 8: Error Recovery
+ *
+ * Every layer refuses with a stable code, and each code has exactly one
+ * honest recovery. Demonstrates: the ledger's INSUFFICIENT_BALANCE, Rails'
+ * CONSENT_* and GRANT_* refusals, Magician's opaque decline, and a retry that
+ * is safe only because every write carries an idempotency key.
+ *
+ * The rule under all of it: a REFUSAL is a decision and is never retried —
+ * the recovery is to change the request or ask a human. A TRANSIENT failure
+ * (the store was unreachable) is retried, and the idempotency key is what
+ * makes the retry settle once.
+ */
 
-// toMinor is a Rails export (src/gold.mjs), not a ledger one.
-import { Rails, toMinor } from '@flashylabs/rails';
-import { MagicianRouter } from '@magician-network/core';
-import { Ledger } from '@flashylabs/ledger';
+import { InMemoryLedgerStore } from '@flashylabs/ledger';
+import { RailsService, approve, issueGrant, attenuate, revoke, toMinor, FLASHY_GOLD_ID } from '@flashylabs/rails';
+import {
+  parseGraph, findPathsTo, openRequest, consentHop, declineHop, toRequesterView, requestState,
+} from '@magician-network/core';
 
-async function errorRecoveryExample() {
-  console.log('⚡ Example 8: Error Recovery\n');
+const ALICE = 'person/alice';
+const BOB = 'person/bob';
+const CHARLIE = 'person/charlie';
+const DAVE = 'person/dave';
+const NOW = new Date();
 
-  const ledger = new Ledger({ store: new Map() });
-  const rails = new Rails({ ledger });
-  const router = new MagicianRouter();
-
-  // Setup
-  await ledger.registerAsset({ symbol: 'USD', decimals: 2 });
-  await ledger.issue('user:alice', 'USD', toMinor('200.00'));
-
-  // Scenario 1: Insufficient balance
-  console.log('Scenario 1: Insufficient balance');
-  try {
-    const draft = rails.draftTransfer({
-      from: 'user:alice',
-      to: 'user:bob',
-      asset: 'USD',
-      amount: toMinor('500.00')  // More than balance
-    });
-    const token = rails.createConsentToken(draft, 'user:alice');
-    rails.execute(draft, token);
-  } catch (err) {
-    console.log(`  ✓ Caught error: ${err.message}\n`);
-  }
-
-  // Scenario 2: Revoked grant
-  console.log('Scenario 2: Revoked grant');
-  const draft = rails.draftTransfer({
-    from: 'user:alice',
-    to: 'user:bob',
-    asset: 'USD',
-    amount: toMinor('50.00')
-  });
-  const token = rails.createConsentToken(draft, 'user:alice');
-
-  // Simulate grant revocation between draft and execution
-  rails.revokeGrant(draft.grantId);
-
-  try {
-    rails.execute(draft, token);
-  } catch (err) {
-    console.log(`  ✓ Caught error: ${err.message}\n`);
-  }
-
-  // Scenario 3: Routing failure (hop declined)
-  console.log('Scenario 3: Routing through declined hop');
-  router.addEdge({ from: 'alice', to: 'bob', tier: 'trusted' });
-  router.addEdge({ from: 'bob', to: 'carol', tier: 'trusted' });
-
-  // Request routing, but Bob declines
-  try {
-    const route = router.findRoute('alice', 'carol');
-    // Bob declines this introduction
-    router.decline(route);
-  } catch (err) {
-    console.log(`  ✓ Caught error: ${err.message}\n`);
-  }
-
-  // Scenario 4: Retry with backoff
-  console.log('Scenario 4: Retry with exponential backoff');
-
-  async function executeWithRetry(draft, token, maxRetries = 3) {
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        const result = rails.execute(draft, token);
-        console.log(`  ✓ Success on attempt ${attempt}`);
-        return result;
-      } catch (err) {
-        if (attempt < maxRetries) {
-          const backoff = Math.pow(2, attempt - 1) * 100;  // exponential backoff
-          console.log(`  Attempt ${attempt} failed: ${err.message}`);
-          console.log(`  Retrying in ${backoff}ms...`);
-          await new Promise(resolve => setTimeout(resolve, backoff));
-        } else {
-          console.log(`  ✗ Failed after ${maxRetries} attempts`);
-          throw err;
-        }
-      }
+/** A store whose next appendAll fails the way a network does — after post(), before commit. */
+class FlakyStore {
+  constructor(inner, failures = 1) { this.inner = inner; this.failures = failures; }
+  async append(entry) { return (await this.appendAll([entry]))[0]; }
+  async appendAll(entries) {
+    if (this.failures > 0) {
+      this.failures -= 1;
+      throw Object.assign(new Error('connection reset before commit'), { code: 'ETRANSIENT' });
     }
+    return this.inner.appendAll(entries);
   }
-
-  const recoveryDraft = rails.draftTransfer({
-    from: 'user:alice',
-    to: 'user:bob',
-    asset: 'USD',
-    amount: toMinor('50.00')
-  });
-  const recoveryToken = rails.createConsentToken(recoveryDraft, 'user:alice');
-
-  await executeWithRetry(recoveryDraft, recoveryToken);
-
-  // Scenario 5: Graceful degradation
-  console.log('\nScenario 5: Graceful degradation (prefer direct path)');
-
-  function choosePath(from, to, graph) {
-    const paths = graph.findPaths(from, to, { maxHops: 5 });
-
-    if (paths.length === 0) {
-      console.log(`  ✗ No paths available`);
-      return null;
-    }
-
-    // Prefer shortest path, but if it fails, try next
-    for (const path of paths) {
-      if (graph.isPathViable(path)) {
-        console.log(`  ✓ Using path: ${path.join(' → ')}`);
-        return path;
-      }
-    }
-
-    console.log(`  ✗ No viable paths`);
-    return null;
-  }
-
-  choosePath('alice', 'carol', router);
-
-  console.log('\n✅ Error recovery patterns demonstrated\n');
+  readState(ref) { return this.inner.readState(ref); }
+  readEntries(ref) { return this.inner.readEntries(ref); }
+  findByIdempotencyKey(tenantId, key) { return this.inner.findByIdempotencyKey(tenantId, key); }
+  get size() { return this.inner.size; }
 }
 
-await errorRecoveryExample();
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** Retry ONLY transient failures, with exponential backoff. A refusal is thrown straight back. */
+export async function withRetry(fn, { attempts = 3, baseMs = 5, isTransient = (e) => e.code === 'ETRANSIENT' } = {}) {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await fn(attempt);
+    } catch (err) {
+      if (!isTransient(err) || attempt >= attempts) throw err;
+      await sleep(baseMs * 2 ** (attempt - 1));
+    }
+  }
+}
+
+/** What each code means for the caller. The codes are the contract; the messages are for people. */
+const RECOVERY = {
+  INSUFFICIENT_BALANCE: 'ledger refused: draft a smaller amount (a new draft needs a new consent)',
+  CONSENT_REQUIRED: 'no consent presented: ask the holder — never construct one',
+  CONSENT_MISMATCH: 'consent is for a different draft or holder: ask the holder for THIS draft',
+  GRANT_REVOKED: 'the holder took the authority back: ask them for a fresh grant',
+  GRANT_EXCEEDED: 'a grant is a cap: ask the holder for more — attenuate() cannot widen it',
+  GRANT_EXPIRED: 'the grant lapsed: ask the holder for a fresh one',
+  GRANT_WIDENED: 'a child cannot hold what its parent lacks: this is a bug in the caller, not a retry',
+  ETRANSIENT: 'the store was unreachable: retry the same draft with the same consent',
+};
+
+function report(err) {
+  console.log(`   ${err.name} ${err.code}${err.httpStatus ? ` (${err.httpStatus})` : ''} -> ${RECOVERY[err.code] ?? 'unknown code'}`);
+}
+
+async function main() {
+  console.log('=== Error Recovery ===\n');
+
+  const store = new InMemoryLedgerStore();
+  const rails = new RailsService({ store });
+  await rails.earn({ identityId: ALICE, amount: 200, source: { type: 'quest', id: 'q1' }, idempotencyKey: 'quest:q1:alice' });
+
+  console.log('1. Insufficient balance — the ledger refuses after consent, before any write');
+  const tooMuch = rails.draftTransfer({ fromId: ALICE, toId: BOB, amount: 500, source: { type: 'payment', id: 'p1' }, idempotencyKey: 'p1' });
+  try {
+    await rails.execute(tooMuch, approve(tooMuch, ALICE, NOW));
+  } catch (err) {
+    report(err);
+  }
+  const { gold } = await rails.balance(ALICE);
+  const affordable = rails.draftTransfer({ fromId: ALICE, toId: BOB, amount: Math.min(500, gold), source: { type: 'payment', id: 'p1b' }, idempotencyKey: 'p1b' });
+  await rails.execute(affordable, approve(affordable, ALICE, NOW));
+  console.log(`   recovered: re-drafted for ${gold} Gold, Alice consented again, settled\n`);
+
+  console.log('2. Grant refusals — revoked, exceeded, and the one recovery that is refused');
+  await rails.earn({ identityId: ALICE, amount: 100, source: { type: 'quest', id: 'q2' }, idempotencyKey: 'quest:q2:alice' });
+  const grant = issueGrant({ grantId: 'g1', holderId: ALICE, spenderId: 'org/demo-shop', assetId: FLASHY_GOLD_ID, capMinor: toMinor(20), purpose: 'supplies' });
+  try {
+    await rails.spendUnderGrant({ grant: revoke(grant), amount: 5, source: { type: 'purchase' }, idempotencyKey: 's1' });
+  } catch (err) {
+    report(err);
+  }
+  try {
+    await rails.spendUnderGrant({ grant, amount: 25, source: { type: 'purchase' }, idempotencyKey: 's2' });
+  } catch (err) {
+    report(err);
+  }
+  try {
+    attenuate(grant, { grantId: 'g1-wider', spenderId: 'org/demo-shop', capMinor: toMinor(25) });
+  } catch (err) {
+    report(err);
+  }
+  const fresh = issueGrant({ grantId: 'g2', holderId: ALICE, spenderId: 'org/demo-shop', assetId: FLASHY_GOLD_ID, capMinor: toMinor(30), purpose: 'supplies' });
+  await rails.spendUnderGrant({ grant: fresh, amount: 25, source: { type: 'purchase' }, idempotencyKey: 's3' });
+  console.log('   recovered: the holder issued a fresh grant with a higher cap\n');
+
+  console.log('3. Consent mismatch — the fix is the right consent, nothing else');
+  const a = rails.draftTransfer({ fromId: ALICE, toId: BOB, amount: 1, source: { type: 'payment', id: 'pa' }, idempotencyKey: 'pa' });
+  const b = rails.draftTransfer({ fromId: ALICE, toId: BOB, amount: 1, source: { type: 'payment', id: 'pb' }, idempotencyKey: 'pb' });
+  try {
+    await rails.execute(b, approve(a, ALICE, NOW));
+  } catch (err) {
+    report(err);
+  }
+  await rails.execute(b, approve(b, ALICE, NOW));
+  console.log('   recovered: Alice consented to draft b itself\n');
+
+  console.log('4. A declined hop — the requester reads "unavailable" and tries another path');
+  const person = (id, capabilities = []) => ({ id, name: `${id.slice(7)} (demo)`, capabilities, demo: true });
+  const edge = (from, to) => ({
+    format: 'trust/1', from, to, tier: 'private', domains: [], strength: { value: 0.8, register: 'asserted' },
+    provenance: [{ kind: 'worked-with', at: '2026-01-15' }], asserted: '2026-01-15', renewed: '2026-06-01',
+  });
+  const graph = parseGraph(JSON.stringify({
+    format: 'magician-graph/1', owner: ALICE,
+    people: [person(ALICE), person(BOB), person(CHARLIE), person(DAVE, ['cap/consulting'])],
+    edges: [edge(ALICE, BOB), edge(BOB, DAVE), edge(ALICE, CHARLIE), edge(CHARLIE, DAVE)],
+  }));
+  const [first, second] = findPathsTo(graph, new Set([DAVE]), NOW);
+  let req = openRequest('req-1', 'consulting', first, NOW);
+  req = consentHop(req, ALICE, NOW);
+  req = declineHop(req, first.hops[1].consentOf, NOW);
+  console.log(`   request 1: ${JSON.stringify(toRequesterView(req))} — not who, not why`);
+  let alt = openRequest('req-2', 'consulting', second, NOW);
+  for (const owner of second.hops.map((h) => h.consentOf)) alt = consentHop(alt, owner, NOW);
+  console.log(`   request 2 via the other path: ${requestState(alt)}\n`);
+
+  console.log('5. A transient failure — retry the SAME draft with the SAME consent; the key makes it safe');
+  const flaky = new FlakyStore(new InMemoryLedgerStore(), 1);
+  const rails2 = new RailsService({ store: flaky });
+  await rails2.earn({ identityId: ALICE, amount: 10, source: { type: 'quest', id: 'q1' }, idempotencyKey: 'quest:q1:alice' })
+    .catch((err) => { report(err); return rails2.earn({ identityId: ALICE, amount: 10, source: { type: 'quest', id: 'q1' }, idempotencyKey: 'quest:q1:alice' }); });
+  const draft = rails2.draftTransfer({ fromId: ALICE, toId: BOB, amount: 4, source: { type: 'payment', id: 'p9' }, idempotencyKey: 'p9' });
+  const consent = approve(draft, ALICE, NOW);
+  flaky.failures = 1;
+  const results = await withRetry(async (attempt) => {
+    console.log(`   attempt ${attempt}`);
+    return rails2.execute(draft, consent);
+  });
+  console.log(`   settled on retry: ${results.every((r) => !r.deduplicated)}; a further replay dedups: ${(await rails2.execute(draft, consent)).every((r) => r.deduplicated)}`);
+  console.log(`   Alice: ${(await rails2.balance(ALICE)).gold} Gold — moved once\n`);
+
+  console.log('6. A refusal is never retried');
+  let attempts = 0;
+  try {
+    await withRetry(() => { attempts += 1; return rails.execute(tooMuch, approve(tooMuch, ALICE, NOW)); });
+  } catch (err) {
+    console.log(`   ${err.code} after ${attempts} attempt — a decision, not a blip\n`);
+  }
+
+  console.log('=== Error Recovery Complete ===\n');
+}
+
+main().catch((err) => {
+  console.error('Error:', err);
+  process.exit(1);
+});

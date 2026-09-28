@@ -8,27 +8,29 @@ Working examples and tutorials for the Flashy ecosystem packages:
 - `@magician-network/core` — trust routing and sealed introductions
 - `@flashyid/sdk` — identity and delegation layer
 
-## The Five Examples
+## The Examples
 
 ### 1️⃣ Ledger Basics — `01-ledger-basics`
 
 **The invariant: Balance never goes negative. Settlement is append-only.**
 
-Create and manage a multi-asset ledger, record transfers and redemptions, guarantee idempotent replay.
+Materialize an asset from the registry, `post()` an entry against a holder's
+state, `append()` it, move value as two entries that land together, replay a
+key and get the original back.
 
 ```bash
-npm run examples:ledger    # ~95 lines of code + working ledger
-npm test examples/01-ledger-basics/  # ~163 test cases
+npm run examples:ledger
+npm test examples/01-ledger-basics/
 ```
 
 **Concepts covered:**
-- ✅ Minor type (branded integer, never raw numbers)
-- ✅ Multi-asset isolation
-- ✅ Idempotent replay semantics
-- ✅ Balance invariant (never negative)
-- ✅ Audit trail (immutable history)
+- ✅ `Minor` — integer minor units via `fromDecimal`/`minor`; over-precision refused
+- ✅ `post()` is pure; `InMemoryLedgerStore` persists; there is no `Ledger` class
+- ✅ A transfer is `postTransfer` → `appendAll([debit, credit])`
+- ✅ Idempotent replay (`deduplicated: true`), asset isolation, tenant scoping
+- ✅ The hash chain (`verifyChain`) and opaque identity (an email is refused)
 
-**Runs:** needs `@flashylabs/ledger` — `toMinor`/`toGold` are a local helper (`money.mjs`); the ledger does not export them.
+**Runs:** needs `@flashylabs/ledger`
 
 **Read:** [`examples/01-ledger-basics/README.md`](examples/01-ledger-basics/)
 
@@ -36,23 +38,24 @@ npm test examples/01-ledger-basics/  # ~163 test cases
 
 ### 2️⃣ Rails Consent — `02-rails-consent`
 
-**The invariant: Value never moves without explicit approval.**
+**The invariant: Value never moves without the holder's explicit approval.**
 
-Execute the consent gate: draft a transfer, wait for consent, execute atomically. Rejection is final.
+`draftTransfer` (pure) → `approve(draft, holder, at)` → `execute(draft, consent)`.
+A consent is bound to one draft and one holder. Grants narrow, never widen.
 
 ```bash
-npm run examples:rails  # ~95 lines of code + consent flow
-npm test examples/02-rails-consent/  # ~151 test cases
+npm run examples:rails
+npm test examples/02-rails-consent/
 ```
 
 **Concepts covered:**
-- ✅ Draft → Approve → Execute flow
-- ✅ Consent tokens (time-bound, single-use)
-- ✅ Attenuation (grants narrow, never widen)
-- ✅ Immediate revocation
-- ✅ Ledger integration
+- ✅ `RailsService` over an `InMemoryLedgerStore`; amounts are decimal *numbers* at the edge
+- ✅ `CONSENT_REQUIRED` / `CONSENT_MISMATCH`; execution idempotent by the draft's key
+- ✅ `issueGrant` / `attenuate` / `revoke`; `GRANT_WIDENED`, `GRANT_REVOKED`, `GRANT_EXPIRED`, `GRANT_EXCEEDED`
+- ✅ `toMinor(25) === 2500`; a string amount is `INVALID_AMOUNT`
+- ✅ `reconcile()` — every entry hashed, chained, settling to the balance
 
-**Runs:** needs `@flashylabs/rails`
+**Runs:** needs `@flashylabs/ledger`, `@flashylabs/rails`
 
 **Read:** [`examples/02-rails-consent/README.md`](examples/02-rails-consent/)
 
@@ -62,19 +65,20 @@ npm test examples/02-rails-consent/  # ~151 test cases
 
 **The invariant: A declined introduction is opaque to the requester.**
 
-Build trust graphs, route introductions, collect consent from each hop, seal outcomes with cryptographic proof.
+Parse a `magician-graph/1` document, route an intent with `findPaths`, collect
+consent from the owner of every edge crossed, seal the outcome as `introduction/1`.
 
 ```bash
-npm run examples:magician  # ~111 lines of code + routing
-npm test examples/03-magician-intro/  # ~137 test cases
+npm run examples:magician
+npm test examples/03-magician-intro/
 ```
 
 **Concepts covered:**
-- ✅ Trust graphs (edges represent relationships)
-- ✅ Routing algorithm (find consent path)
-- ✅ Sealed outcomes (sha256, portable)
-- ✅ Opaque decline (no information leak)
-- ✅ Verification (portable, browser-compatible)
+- ✅ `trust/1` edges: ids carry a kind, every number carries a register, no `expires` field
+- ✅ `findPaths` / `veilPath` — the first hop is yours, the rest are hints until consent
+- ✅ The consent machine: `openRequest` → `consentHop` (owner only) → `markIntroduced` (no partial yes)
+- ✅ `toRequesterView` collapses a decline to `unavailable` — deep-equal whichever hop declined
+- ✅ `sealOutcome` / `verifyIntroduction` / `appendOutcome` — portable sha256, append-only log
 
 **Runs:** needs `@magician-network/core`
 
@@ -82,23 +86,26 @@ npm test examples/03-magician-intro/  # ~137 test cases
 
 ---
 
-### 4️⃣ FlashyID OAuth — `04-flashyid-oauth`
+### 4️⃣ FlashyID Assertions & Delegation — `04-flashyid-oauth`
 
 **The invariant: Grants can only narrow, never widen. Delegation is attenuation.**
 
-Authenticate users with OpenID Connect, mint attenuated grants, enforce attenuation at enforcement boundary.
+The issuer signs an EdDSA assertion carrying a delegation chain; the relying
+party verifies it holding only the public key and asks whether the chain
+permits *this* action. **The SDK has no OAuth client** — the redirect dance is
+the OIDC provider's job; the SDK is the verify surface and the grant kernel.
 
 ```bash
-npm run examples:flashyid  # ~105 lines of code + OIDC flow
-npm test examples/04-flashyid-oauth/  # ~109 test cases
+npm run examples:flashyid
+npm test examples/04-flashyid-oauth/
 ```
 
 **Concepts covered:**
-- ✅ OAuth 2.1 flow (PKCE, no implicit)
-- ✅ Credential verification (portable)
-- ✅ Grant minting (with attestation)
-- ✅ Attenuation enforcement (never widen)
-- ✅ Revocation and expiry
+- ✅ `issueRoot` / `attenuate` — refuses by *returning* `{ ok: false, code: 'chain_widened' }`
+- ✅ `signAssertion` (issuer) / `verifyAssertion` (relying party; `null`, never a throw)
+- ✅ `authorize` — `out_of_mandate`, `approval_required`, `revoked`, `broken_chain`, `empty_chain`
+- ✅ `evaluateGrant` — the gate maps `approval_required` to `ESCALATE`
+- ✅ Expiry capped at the parent; revocation walks down
 
 **Runs:** needs `@flashyid/sdk`
 
@@ -108,23 +115,26 @@ npm test examples/04-flashyid-oauth/  # ~109 test cases
 
 ### 5️⃣ Combined Workflow — `05-combined-workflow`
 
-**The invariant: All four systems work together seamlessly.**
+**The invariant: Agents suggest; humans consent — in all four systems.**
 
-Alice pays Dave $50 through a trust chain (Alice → Bob → Carol → Dave). Demonstrates full integration.
+Alice's assistant opens an intent under a chain that lets it draft but never
+execute; Magician routes Alice → Bob → Carol → Dave and each hop consents; the
+introduction is sealed; the assistant drafts a 50 Gold payment; Alice consents;
+two ledger entries land naming the sealed digest.
 
 ```bash
-npm run examples:combined  # ~139 lines of code + all systems
-npm test examples/05-combined-workflow/  # ~136 test cases
+npm run examples:combined
+npm test examples/05-combined-workflow/
 ```
 
 **Integration:**
-- ✅ FlashyID authenticates Alice
-- ✅ Magician routes through Bob and Carol (collects consents)
-- ✅ Rails creates consent-gated transfer
-- ✅ Ledger records settlement atomically
-- ✅ Full audit trail + sealed outcome
+- ✅ flashyID: `authorize(transfer.execute)` is `out_of_mandate` for the assistant
+- ✅ Magician: consent on every hop, `sealOutcome` after `markIntroduced`
+- ✅ Rails: the *holder* consents — Dave's or the agent's consent is `CONSENT_MISMATCH`
+- ✅ Ledger: atomic pair, `metadata.introduction === record.digest`, `reconcile()` ok
+- ✅ One id per person everywhere: `person/alice`
 
-**Runs:** needs `@flashyid/sdk`, `@flashylabs/rails`, `@magician-network/core`
+**Runs:** needs `@flashyid/sdk`, `@magician-network/core`, `@flashylabs/rails`, `@flashylabs/ledger`
 
 **Read:** [`examples/05-combined-workflow/README.md`](examples/05-combined-workflow/)
 
@@ -132,22 +142,24 @@ npm test examples/05-combined-workflow/  # ~136 test cases
 
 ### 6️⃣ Batch Transfers — `06-batch-transfers`
 
-**The pattern: Multiple transfers, atomic execution (all or nothing).**
+**The pattern: Many transfers — and where "atomic" honestly lives.**
 
-Execute multiple transfers to many recipients with a single consent decision.
+Through Rails: one draft and one consent *per transfer* (a consent binds one
+draft), each transfer atomic, the batch sequential. Through the ledger: post
+every entry against a running state and `appendAll` once — all or nothing, at
+the cost of bypassing the consent gate.
 
 ```bash
-npm run examples:batch  # ~130 lines of code + payroll pattern
-npm test examples/06-batch-transfers/  # ~4 comprehensive scenarios
+npm run examples:batch
+npm test examples/06-batch-transfers/
 ```
 
 **Concepts:**
-- ✅ Draft all transfers (pure functions)
-- ✅ Collect single approval (Alice approves all)
-- ✅ Execute atomically (fail together or succeed together)
-- ✅ Audit trail (all operations logged)
-
-**Use case:** Payroll, bulk refunds, multi-recipient payments.
+- ✅ One consent cannot cover a batch — `CONSENT_MISMATCH` by construction
+- ✅ Each transfer lands whole; a shortfall mid-batch leaves earlier ones settled (shown, not hidden)
+- ✅ The running-state pattern for `postTransfer` → `appendAll`
+- ✅ A batch that does not fit is refused in `post()` before anything is written
+- ✅ Replay pays nobody twice
 
 **Runs:** needs `@flashylabs/ledger`, `@flashylabs/rails`
 
@@ -157,22 +169,23 @@ npm test examples/06-batch-transfers/  # ~4 comprehensive scenarios
 
 ### 7️⃣ Graph Analysis — `07-graph-analysis`
 
-**The pattern: Query trust graphs for paths, reachability, bottlenecks.**
+**The pattern: Read a trust graph the way the router does.**
 
-Analyze Magician routing graphs to find paths, identify critical nodes, measure resilience.
+Reachability within `MAX_HOPS`, ranked paths, bottlenecks as a fold over
+`Path[]`, decay and renewal, reversed hops, and dropping an edge you no longer
+stand behind.
 
 ```bash
-npm run examples:graph  # ~110 lines of code + analysis
-npm test examples/07-graph-analysis/  # Reachability, paths, bottlenecks
+npm run examples:graph
+npm test examples/07-graph-analysis/
 ```
 
 **Concepts:**
-- ✅ Reachability queries (who can reach whom)
-- ✅ Shortest path finding (multi-path routing)
-- ✅ Bottleneck identification (critical nodes)
-- ✅ Revocation impact (connectivity after edge removal)
-
-**Use case:** Network planning, risk analysis, load balancing.
+- ✅ `findPathsTo` / `findPaths` / `rankPaths` — match, then fewest introductions, then trust
+- ✅ Bottleneck = the intersection of every path's hops
+- ✅ `freshness` / `effectiveStrength` — stale edges route at `estimated`; `upsertEdge` renews
+- ✅ Reversed hops downgrade to `estimated`; an unrated hop makes path trust `null`
+- ✅ No revoke primitive: drop the edge from your own graph
 
 **Runs:** needs `@magician-network/core`
 
@@ -182,23 +195,22 @@ npm test examples/07-graph-analysis/  # Reachability, paths, bottlenecks
 
 ### 8️⃣ Error Recovery — `08-error-recovery`
 
-**The pattern: Handle common errors, retry, fallback gracefully.**
+**The pattern: Every layer refuses with a stable code; only transient failures are retried.**
 
-Demonstrate error handling: insufficient balance, revoked grants, routing failures, retry logic.
+`INSUFFICIENT_BALANCE`, `CONSENT_*`, `GRANT_*`, the opaque decline, and a
+retry that is safe only because every write carries an idempotency key.
 
 ```bash
-npm run examples:errors  # ~120 lines of code + 5 scenarios
-npm test examples/08-error-recovery/  # Errors, recovery, retries
+npm run examples:errors
+npm test examples/08-error-recovery/
 ```
 
 **Concepts:**
-- ✅ Insufficient balance (clear error)
-- ✅ Revoked grants (immediate effect)
-- ✅ Routing failures (hop declines)
-- ✅ Retry with exponential backoff
-- ✅ Graceful fallback (alternative paths)
-
-**Use case:** Production resilience, reliability patterns.
+- ✅ `LedgerError` passes through Rails unwrapped; `RailsError` is `AppError(code, httpStatus, message)`
+- ✅ A refusal is a decision — never retried; the fix is a new draft, a fresh grant, the right consent
+- ✅ A declined hop reads `unavailable`; take another path, never learn who
+- ✅ A transient failure after `post()` and before commit writes nothing; the retry settles once
+- ✅ Widening as a "recovery" is `GRANT_WIDENED`
 
 **Runs:** needs `@flashylabs/ledger`, `@flashylabs/rails`, `@magician-network/core`
 
@@ -210,20 +222,20 @@ npm test examples/08-error-recovery/  # Errors, recovery, retries
 
 **The invariant: Delegation narrows authority only. Never widens.**
 
-Create multi-level delegation chains: Alice → Bob → Carol → Dave. Each level narrower.
+Alice → Bob → Carol → Dave, each link a lower ceiling, a shorter life, fewer
+scopes. Revoke Bob and Carol and Dave fall with him.
 
 ```bash
-npm run examples:attenuation  # ~140 lines of code + chains
-npm test examples/09-attenuation-chains/  # Narrowing, widening rejection, revocation
+npm run examples:attenuation
+npm test examples/09-attenuation-chains/
 ```
 
 **Concepts:**
-- ✅ Cap narrowing (less spending power)
-- ✅ Expiry narrowing (shorter duration)
-- ✅ Widening rejection (throws error)
-- ✅ Cascading revocation (revoke parent → children invalid)
-
-**Use case:** Principle of least privilege, team delegation, access control.
+- ✅ A grant is a chain, root-first; `issueRoot` then `attenuate`
+- ✅ Widening returns `chain_widened` at the offending index — no exception
+- ✅ Expiry capped at the parent; effective expiry is the chain minimum
+- ✅ `permits` at the boundary: `out_of_mandate` past the ceiling or outside scope
+- ✅ Revocation is a set of `jti`s and walks down; a hand-built widened chain is caught on verify
 
 **Runs:** needs `@flashyid/sdk`
 
@@ -233,23 +245,22 @@ npm test examples/09-attenuation-chains/  # Narrowing, widening rejection, revoc
 
 ### 🔟 Performance Patterns — `10-performance`
 
-**The pattern: Throughput testing, concurrent operations, scaling.**
+**The pattern: Measured throughput — and the concurrency rule the numbers hide.**
 
-Measure system performance: sequential vs. concurrent transfers, query efficiency, memory usage.
+Sequential and parallel settlement on the in-memory store, conservation of
+supply under load, and why writes for one holder must be serialized.
 
 ```bash
-npm run examples:perf  # ~150 lines of code + load testing
-npm test examples/10-performance/  # Concurrency, queries, scaling
+npm run examples:perf
+npm test examples/10-performance/
 ```
 
 **Concepts:**
-- ✅ Sequential throughput (baseline)
-- ✅ Concurrent operations (parallel)
-- ✅ Query performance (balance lookups)
-- ✅ Audit trail efficiency (history fetches)
-- ✅ Memory scaling (heap usage)
-
-**Use case:** Capacity planning, optimization, production readiness.
+- ✅ Every printed figure is a measurement of this process, not a production claim
+- ✅ Parallel across disjoint holders: every chain verifies
+- ✅ Parallel within one holder: the chain forks and `reconcile()` reports it
+- ✅ Conservation: the sum of balances equals the sum of earns
+- ✅ Reads: 100 balances, history, `verifyChain`
 
 **Runs:** needs `@flashylabs/ledger`, `@flashylabs/rails`
 
@@ -401,23 +412,23 @@ Examples 1-10 teach the **core four systems**. Examples 11-14 teach the
 
 ---
 
-## 🧪 Testing (100% Coverage of Invariants)
+## 🧪 Testing
 
-All examples include comprehensive test suites — no skipped tests, no TODOs.
+Every example ships a `node:test` suite — no skipped tests, no TODOs. The
+counts below are what `npm test` reports on 2026-09-28 against the sibling
+checkouts; the standalone set is pinned to **103** by CI.
 
 ```bash
-npm test                           # All ~600 test cases
-npm test examples/01-ledger-basics # One example's tests
+npm test                           # manifest + all 14 examples (needs the file: installs)
+npm run test:standalone            # manifest + examples 11–14, nothing installed
+npm test examples/01-ledger-basics # one example
 ```
 
-Each test suite verifies:
-- ✅ **Happy path** — successful operation
-- ✅ **Error conditions** — failure cases and recovery
-- ✅ **Invariant preservation** — rules enforced at every step
-- ✅ **Idempotency guarantees** — replayed operations are safe
-- ✅ **Cross-system integration** — all four systems work together
-
-Example: The ledger test suite runs 163 cases covering initialization, transfers, redemptions, idempotent replays, multi-asset isolation, and invariant violations.
+Each suite verifies the invariant its README names — happy path, the refusals,
+idempotent replay, and (for 05 and 08) the cross-system seams. Tests assert on
+stable error `code`s (`INSUFFICIENT_BALANCE`, `CONSENT_MISMATCH`,
+`chain_widened`, …), never on message text alone, because the codes are the
+packages' published contract and the messages are for people.
 
 ---
 
@@ -471,7 +482,7 @@ These ten rules are not guidelines—they're enforced by tests, linting, and the
 
 | Rule | Enforcement | Pattern |
 |------|-------------|---------|
-| **1. Minor type only** | TypeScript, test gates | Never `const x = 50.00`. Always `toMinor('50.00')` → 5000 |
+| **1. Minor type only** | TypeScript, test gates | Never do money arithmetic on floats. `toMinor(50)` → `5000`, an integer; `toMinor('50')` is refused; `fromDecimal(12.345, 2)` throws |
 | **2. Explicit consent** | Library design, test | No auto-paths. Draft → get token → execute. Period. |
 | **3. Attenuation only** | Runtime checks | Grants narrow only. `attenuate()` refuses widening. |
 | **4. Sealed = sealed** | Cryptographic hash | sha256 portable across Node/browser. Replay refused. |
@@ -515,7 +526,7 @@ examples/
 
 ```
 1. Read this file (you are here) — understand the four invariants
-2. npm run examples:ledger — see settlement in action (~95 lines)
+2. npm run examples:ledger — see settlement in action
 3. Read examples/01-ledger-basics/README.md — learn the concepts
 4. npm test examples/01-ledger-basics — see all invariants verified
 ```
@@ -527,7 +538,7 @@ examples/
 | 1 | Ledger | Settlement | Append-only, Minor type, idempotency |
 | 2 | Rails | Consent | Draft/execute, attenuation, revocation |
 | 3 | Magician | Routing | Trust graphs, sealed outcomes, opacity |
-| 4 | FlashyID | Identity | OAuth, grants, delegation constraints |
+| 4 | FlashyID | Identity | Signed assertions, grant chains, delegation constraints |
 | 5 | Combined | Integration | All systems together, end-to-end |
 
 **Total time: ~1 hour to understand the Flashy stack.**

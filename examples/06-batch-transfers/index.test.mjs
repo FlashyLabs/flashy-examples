@@ -1,176 +1,132 @@
 import { test } from 'node:test';
-import assert from 'node:assert';
-import { Ledger } from '@flashylabs/ledger';
-import { Rails, toMinor } from '@flashylabs/rails';
+import assert from 'node:assert/strict';
+import { InMemoryLedgerStore, postTransfer } from '@flashylabs/ledger';
+import { RailsService, approve, toMinor, flashyGold, FLASHY_TENANT } from '@flashylabs/rails';
 
-test('Batch transfers: multiple recipients', async () => {
-  const ledger = new Ledger({ store: new Map() });
-  const rails = new Rails({ ledger });
+const ALICE = 'hunter_a1';
+const PAYROLL = [
+  { id: 'hunter_b2', amount: 100 },
+  { id: 'hunter_c3', amount: 100 },
+  { id: 'hunter_d4', amount: 150 },
+];
+const NOW = new Date();
+const gold = flashyGold();
+const ref = (identityId) => ({ tenantId: FLASHY_TENANT, identityId, assetId: gold.id });
 
-  await ledger.registerAsset({ symbol: 'USD', decimals: 2 });
-  await ledger.issue('user:alice', 'USD', toMinor('500.00'));
+async function setup(balance) {
+  const store = new InMemoryLedgerStore();
+  const rails = new RailsService({ store });
+  await rails.earn({ identityId: ALICE, amount: balance, source: { type: 'quest', id: 'q1' }, idempotencyKey: `quest:q1:${ALICE}` });
+  return { store, rails };
+}
 
-  // Draft all transfers
-  const drafts = [
-    { to: 'user:bob', amount: toMinor('100.00') },
-    { to: 'user:carol', amount: toMinor('100.00') },
-    { to: 'user:dave', amount: toMinor('150.00') }
-  ].map(({ to, amount }) =>
-    rails.draftTransfer({
-      from: 'user:alice',
-      to,
-      asset: 'USD',
-      amount
-    })
-  );
+const draftsFor = (rails, recipients) => recipients.map((p) => rails.draftTransfer({
+  fromId: ALICE, toId: p.id, amount: p.amount,
+  source: { type: 'payroll', id: '2026-09' }, idempotencyKey: `payroll:2026-09:${p.id}`,
+}));
 
-  assert.equal(drafts.length, 3, 'Three drafts created');
-
-  // Collect consents
-  const consents = drafts.map(draft =>
-    rails.createConsentToken(draft, 'user:alice')
-  );
-
-  // Execute all
-  const results = [];
-  for (let i = 0; i < drafts.length; i++) {
-    results.push(rails.execute(drafts[i], consents[i]));
+async function batchEntries(store, recipients, period = '2026-09') {
+  let senderState = await store.readState(ref(ALICE));
+  const entries = [];
+  for (const p of recipients) {
+    const toState = await store.readState(ref(p.id));
+    const [debit, credit] = postTransfer(
+      { state: senderState, identityId: ALICE },
+      { state: toState, identityId: p.id },
+      { tenantId: FLASHY_TENANT, asset: gold, amount: toMinor(p.amount), source: { type: 'payroll', id: period }, idempotencyKey: `payroll:${period}:${p.id}`, occurredAt: NOW },
+    );
+    entries.push(debit, credit);
+    senderState = { balance: debit.balanceAfter, headHash: debit.hash };
   }
+  return entries;
+}
 
-  assert.equal(results.length, 3, 'All three transfers executed');
+test('Batch (Rails): three recipients, one draft and one consent each', async () => {
+  const { store, rails } = await setup(500);
+  const drafts = draftsFor(rails, PAYROLL);
+  assert.equal(store.size, 1, 'drafting wrote nothing');
 
-  // Verify balances
-  const aliceBalance = await ledger.getBalance('user:alice', 'USD');
-  assert.equal(aliceBalance, toMinor('50.00'), 'Alice spent $450');
+  for (const draft of drafts) await rails.execute(draft, approve(draft, ALICE, NOW));
 
-  const bobBalance = await ledger.getBalance('user:bob', 'USD');
-  assert.equal(bobBalance, toMinor('100.00'), 'Bob received $100');
-
-  const carolBalance = await ledger.getBalance('user:carol', 'USD');
-  assert.equal(carolBalance, toMinor('100.00'), 'Carol received $100');
-
-  const daveBalance = await ledger.getBalance('user:dave', 'USD');
-  assert.equal(daveBalance, toMinor('150.00'), 'Dave received $150');
+  assert.equal((await rails.balance(ALICE)).gold, 150);
+  assert.equal((await rails.balance('hunter_b2')).gold, 100);
+  assert.equal((await rails.balance('hunter_c3')).gold, 100);
+  assert.equal((await rails.balance('hunter_d4')).gold, 150);
+  assert.equal(store.size, 7, 'one earn plus three debit/credit pairs');
+  assert.equal((await rails.reconcile(ALICE)).ok, true);
 });
 
-test('Batch transfers: atomicity (no partial success)', async () => {
-  const ledger = new Ledger({ store: new Map() });
-  const rails = new Rails({ ledger });
-
-  await ledger.registerAsset({ symbol: 'USD', decimals: 2 });
-  await ledger.issue('user:alice', 'USD', toMinor('200.00'));
-
-  // Try to transfer $150 to three recipients ($450 total, but only have $200)
-  const drafts = [
-    { to: 'user:bob', amount: toMinor('150.00') },
-    { to: 'user:carol', amount: toMinor('150.00') },
-    { to: 'user:dave', amount: toMinor('150.00') }
-  ].map(({ to, amount }) =>
-    rails.draftTransfer({
-      from: 'user:alice',
-      to,
-      asset: 'USD',
-      amount
-    })
-  );
-
-  const consents = drafts.map(draft =>
-    rails.createConsentToken(draft, 'user:alice')
-  );
-
-  // First transfer succeeds
-  rails.execute(drafts[0], consents[0]);
-
-  // Second transfer fails (insufficient balance)
-  assert.throws(
-    () => rails.execute(drafts[1], consents[1]),
-    /insufficient balance/i,
-    'Second transfer rejected (insufficient balance)'
-  );
-
-  // Verify state: only first transfer settled
-  const aliceBalance = await ledger.getBalance('user:alice', 'USD');
-  assert.equal(aliceBalance, toMinor('50.00'), 'Only first transfer settled');
-
-  const bobBalance = await ledger.getBalance('user:bob', 'USD');
-  assert.equal(bobBalance, toMinor('150.00'), 'Bob received payment');
-
-  const carolBalance = await ledger.getBalance('user:carol', 'USD');
-  assert.equal(carolBalance, undefined, 'Carol received nothing (second transfer failed)');
+test('Batch (Rails): one consent cannot cover the batch — it is bound to one draft', async () => {
+  const { rails } = await setup(500);
+  const [first, second] = draftsFor(rails, PAYROLL);
+  const consent = approve(first, ALICE, NOW);
+  await rails.execute(first, consent);
+  await assert.rejects(() => rails.execute(second, consent), { code: 'CONSENT_MISMATCH' });
+  await assert.rejects(() => rails.execute(second, null), { code: 'CONSENT_REQUIRED' });
+  assert.equal((await rails.balance('hunter_c3')).gold, 0);
 });
 
-test('Batch transfers: idempotency (replayed transfer rejected)', async () => {
-  const ledger = new Ledger({ store: new Map() });
-  const rails = new Rails({ ledger });
+test('Batch (Rails): each transfer is atomic; the batch is not — a shortfall stops it mid-way', async () => {
+  const { store, rails } = await setup(200);
+  const drafts = draftsFor(rails, PAYROLL.map((p) => ({ ...p, amount: 150 })));
 
-  await ledger.registerAsset({ symbol: 'USD', decimals: 2 });
-  await ledger.issue('user:alice', 'USD', toMinor('500.00'));
-
-  const draft = rails.draftTransfer({
-    from: 'user:alice',
-    to: 'user:bob',
-    asset: 'USD',
-    amount: toMinor('100.00')
-  });
-
-  const consent = rails.createConsentToken(draft, 'user:alice');
-
-  // First execution succeeds
-  rails.execute(draft, consent);
-  const firstBalance = await ledger.getBalance('user:alice', 'USD');
-  assert.equal(firstBalance, toMinor('400.00'), 'First execution settled');
-
-  // Replay the same transfer
-  assert.throws(
-    () => rails.execute(draft, consent),
-    /already settled|replayed|idempotent/i,
-    'Replayed transfer rejected'
+  await rails.execute(drafts[0], approve(drafts[0], ALICE, NOW));
+  const sizeAfterFirst = store.size;
+  await assert.rejects(
+    () => rails.execute(drafts[1], approve(drafts[1], ALICE, NOW)),
+    (err) => err.name === 'LedgerError' && err.code === 'INSUFFICIENT_BALANCE',
   );
+  assert.equal(store.size, sizeAfterFirst, 'the failed transfer left no half-written debit');
 
-  // Verify balance unchanged
-  const secondBalance = await ledger.getBalance('user:alice', 'USD');
-  assert.equal(secondBalance, toMinor('400.00'), 'Balance unchanged (replay rejected)');
+  // Honest state: the first recipient was paid, the second was not.
+  assert.equal((await rails.balance('hunter_b2')).gold, 150);
+  assert.equal((await rails.balance('hunter_c3')).gold, 0);
+  assert.equal((await rails.balance(ALICE)).gold, 50);
 });
 
-test('Batch transfers: consent required for each transfer', async () => {
-  const ledger = new Ledger({ store: new Map() });
-  const rails = new Rails({ ledger });
+test('Batch (Rails): replaying an executed draft pays nobody twice', async () => {
+  const { store, rails } = await setup(500);
+  const drafts = draftsFor(rails, PAYROLL);
+  const consents = drafts.map((d) => approve(d, ALICE, NOW));
+  for (const [i, d] of drafts.entries()) await rails.execute(d, consents[i]);
+  const size = store.size;
 
-  await ledger.registerAsset({ symbol: 'USD', decimals: 2 });
-  await ledger.issue('user:alice', 'USD', toMinor('300.00'));
+  const replays = await Promise.all(drafts.map((d, i) => rails.execute(d, consents[i])));
+  assert.ok(replays.every((rs) => rs.every((r) => r.deduplicated)));
+  assert.equal(store.size, size);
+  assert.equal((await rails.balance(ALICE)).gold, 150);
+});
 
-  const draft1 = rails.draftTransfer({
-    from: 'user:alice',
-    to: 'user:bob',
-    asset: 'USD',
-    amount: toMinor('100.00')
-  });
-
-  const draft2 = rails.draftTransfer({
-    from: 'user:alice',
-    to: 'user:carol',
-    asset: 'USD',
-    amount: toMinor('100.00')
-  });
-
-  // Get consent for first transfer only
-  const consent1 = rails.createConsentToken(draft1, 'user:alice');
-
-  // First transfer works
-  rails.execute(draft1, consent1);
-
-  // Second transfer fails (no consent token)
-  assert.throws(
-    () => rails.execute(draft2, null),
-    /consent|required|token/i,
-    'Second transfer rejected (no consent token)'
+test('Batch (ledger): a batch that does not fit is refused before anything is written', async () => {
+  const { store, rails } = await setup(200);
+  await assert.rejects(
+    () => batchEntries(store, PAYROLL.map((p) => ({ ...p, amount: 150 }))),
+    { code: 'INSUFFICIENT_BALANCE' },
   );
+  assert.equal(store.size, 1, 'post() threw in the pure domain; appendAll was never reached');
+  assert.equal((await rails.balance(ALICE)).gold, 200);
+  assert.equal((await rails.balance('hunter_b2')).gold, 0);
+});
 
-  // Now get consent for second transfer
-  const consent2 = rails.createConsentToken(draft2, 'user:alice');
-  rails.execute(draft2, consent2);
+test('Batch (ledger): a batch that fits lands whole in one appendAll, correctly chained', async () => {
+  const { store, rails } = await setup(200);
+  const entries = await batchEntries(store, PAYROLL.map((p) => ({ ...p, amount: 50 })));
+  assert.equal(entries.length, 6);
 
-  // Both settled
-  const aliceBalance = await ledger.getBalance('user:alice', 'USD');
-  assert.equal(aliceBalance, toMinor('100.00'), 'Both transfers settled');
+  const results = await store.appendAll(entries);
+  assert.ok(results.every((r) => !r.deduplicated));
+  assert.equal((await rails.balance(ALICE)).gold, 50);
+  assert.equal((await rails.balance('hunter_d4')).gold, 50);
+
+  // Each debit chained onto the previous one — reconcile proves the running state was right.
+  const reconciled = await rails.reconcile(ALICE);
+  assert.equal(reconciled.ok, true, reconciled.problems.join('; '));
+  assert.equal(reconciled.entries, 4);
+
+  // A retrying client resubmits the entries it already built — the same keys
+  // replay as a no-op. (Rebuilding them against the post-batch state would be a
+  // NEW batch, and would rightly fail on balance.)
+  const replay = await store.appendAll(entries);
+  assert.ok(replay.every((r) => r.deduplicated), 'the same keys replay as a no-op');
+  assert.equal((await rails.balance(ALICE)).gold, 50);
 });

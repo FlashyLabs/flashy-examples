@@ -1,147 +1,114 @@
 # Example 2: Rails Consent Flow
 
-Learn the consent gate pattern: draft a transfer, get approval, then execute atomically.
+The consent gate in `@flashylabs/rails`: an agent drafts, the holder consents,
+then value moves.
 
-## Why Consent?
+## Why consent?
 
-The consent gate enforces a critical invariant: **value never moves without explicit approval from the holder**.
+**Value never leaves a holder without their approval.** Agents suggest; humans
+consent. There is no auto-approval at any tier — `execute()` is the one place
+a holder's Gold moves out, and it refuses without a consent bound to exactly
+this draft and exactly this holder.
 
-This prevents:
-- ❌ Accidental transfers
-- ❌ Buggy code moving value
-- ❌ Unauthorized automation
-
-It enables:
-- ✅ Multi-party settlement
-- ✅ Reversible decisions
-- ✅ Audit trail
-
-## The Flow
+## The flow
 
 ```
-1. Draft       (pure function) → Proposal
-2. Get Consent (out-of-band)   → Approval Token
-3. Execute     (one-way)       → Settlement
+1. draftTransfer(cmd)          pure — computes what WOULD happen, writes nothing
+2. approve(draft, holder, at)  the holder's yes, bound to this draft's id
+3. execute(draft, consent)     the one write; two ledger entries land or neither
 ```
 
-### Step 1: Draft (Pure, No Side Effects)
-
-Create a draft transfer. This is pure—nothing is recorded yet:
+### Step 1: Draft (pure)
 
 ```javascript
-const draft = draftTransfer({
-  from: 'alice',
-  to: 'bob',
-  asset: 'flashy-gold',
-  amount: toMinor('25.00'),
-  reason: 'payment for services'
+const draft = rails.draftTransfer({
+  fromId: 'hunter_a1', toId: 'hunter_b2',
+  amount: 25,                                   // a decimal NUMBER; toMinor happens inside
+  source: { type: 'payment', id: 'inv-1' },
+  idempotencyKey: 'inv-1',
 });
-
-// draft is just data, can be serialized, forwarded, etc.
+// draft.id === 'transfer:inv-1', draft.amountMinor === 2500
 ```
 
-### Step 2: Get Consent
+An agent may hold a draft. Nothing moves.
 
-Get approval from the account holder (not from code):
+### Step 2: Consent
 
 ```javascript
-// Out-of-band: user clicks "Approve" in UI
-// Returns a cryptographically signed consent token
-const consentToken = await getUserApproval(draft);
-
-// Consent is explicit for THIS draft
-// Cannot approve a different draft with same token
+const consent = approve(draft, 'hunter_a1', new Date());
+// { draftId: 'transfer:inv-1', holderId: 'hunter_a1', action: 'transfer', approvedAt }
 ```
+
+The consent names the draft, the holder and the action. A consent for `inv-1`
+cannot execute `inv-2` (`CONSENT_MISMATCH`); Bob's consent cannot move Alice's
+Gold (`CONSENT_MISMATCH`); no consent at all is `CONSENT_REQUIRED`. In
+production the token is signed by flashyID; the *binding* rules are these and
+hold wherever it comes from.
 
 ### Step 3: Execute
 
-Execute the transfer using the consent token:
-
 ```javascript
-const result = await execute(draft, consentToken);
-
-// Now it's recorded in the ledger
-// Cannot be executed twice (idempotent by draft ID)
+const results = await rails.execute(draft, consent);
+// two AppendResults: TRANSFER_OUT for Alice, TRANSFER_IN for Bob
 ```
 
-## Key Constraints
+Replaying `execute` with the same draft returns `deduplicated: true` on both
+entries — the draft's `idempotencyKey` is the ledger's key, so a retry settles
+once.
 
-**Attenuation, not inheritance.** A delegated grant can never be wider than its parent:
-
-```javascript
-// ✅ Correct: narrow the scope
-attenuate(grant, {
-  cap: grant.cap,      // Same or lower
-  expiry: grant.expiry  // Same or earlier
-});
-
-// ❌ Wrong: cannot widen
-attenuate(grant, {
-  cap: grant.cap + toMinor('1.00')  // ERROR
-});
-```
-
-**Revocation is immediate.** Once revoked, a grant refuses all operations:
+## Money at the edge
 
 ```javascript
-revoke(grant);
-// Any subsequent execute(draft, consentToken) fails
+toMinor(25);     // 2500 — a number in, an integer out
+toGold(2500);    // 25   — presentation only
+toMinor('25');   // never: amounts are numbers; a string is INVALID_AMOUNT at the edge
+toMinor(0.005);  // throws PrecisionError — Gold settles to 2 decimals
 ```
 
-**Expiry is checked at execute time.** Not at draft time:
+`rails.balance(id)` answers `{ minor, gold, symbol }`; you never format minor
+units by hand.
+
+## Delegated spend: grants that only narrow
 
 ```javascript
-const draft = draftTransfer(...);
-const token = getApproval(draft);
-// ... time passes ...
-const result = execute(draft, token);  // Fails if token expired
+const cafe  = issueGrant({ grantId: 'g-cafe', holderId: 'hunter_a1', spenderId: 'org/demo-cafe',
+                           assetId: FLASHY_GOLD_ID, capMinor: toMinor(20), purpose: 'coffee' });
+const kiosk = attenuate(cafe, { grantId: 'g-kiosk', spenderId: 'org/demo-cafe-kiosk', capMinor: toMinor(5) });
+
+attenuate(kiosk, { grantId: 'g-wide', spenderId: 'org/x', capMinor: toMinor(50) }); // throws GRANT_WIDENED
 ```
 
-## Running This Example
+A child grant can never hold authority its parent lacks: a larger cap, a later
+(or dropped) expiry, or a different purpose all throw `GRANT_WIDENED`. Spends
+go through `spendUnderGrant`, which checks `assertSpendable` before any write
+(`GRANT_REVOKED`, `GRANT_EXPIRED`, `GRANT_EXCEEDED`) and returns the grant
+with the amount drawn down — grants are immutable, like entries. A dedup
+replay does not draw the grant down twice.
+
+`revoke(grant)` returns a revoked copy; every operation on it refuses.
+
+## Running this example
 
 ```bash
 npm run examples:rails
 npm test examples/02-rails-consent
 ```
 
-## Code Walkthrough
+## Invariants tested
 
-See `index.mjs` for the full example.
+- **A draft writes nothing** — `store.size` unchanged, balance unchanged
+- **Amounts are numbers** — `'25'` is `INVALID_AMOUNT`; `toMinor(25) === 2500`
+- **Execution requires consent** — `CONSENT_REQUIRED`, nothing written
+- **Consent is bound to one draft and one holder** — `CONSENT_MISMATCH` otherwise
+- **Execution settles both sides** — `TRANSFER_OUT` + `TRANSFER_IN`, `consentedAt` recorded
+- **Execution is idempotent** — replay is `deduplicated`, balances unchanged
+- **Insufficient balance is the ledger's refusal** — `LedgerError INSUFFICIENT_BALANCE`, unwrapped
+- **Attenuation only narrows** — four ways to widen, all `GRANT_WIDENED`
+- **Revocation is immediate; expiry is checked at spend time** — `GRANT_REVOKED`, `GRANT_EXPIRED`
+- **A grant is a cap** — draws down, `GRANT_EXCEEDED` past remaining, replay does not double-draw
+- **The books reconcile** — `reconcile()` is `ok` with a recomputable `sealHead`
 
-```javascript
-// 1. Initialize rails (wraps ledger + consent)
-const rails = new Rails(ledgerStore);
+## Next steps
 
-// 2. Draft a transfer (pure function)
-const draft = rails.draftTransfer({
-  from: 'alice',
-  to: 'bob',
-  asset: 'flashy-gold',
-  amount: toMinor('25.00')
-});
-
-// 3. Get approval (simulated)
-const approval = await getApprovalFromUser(draft);
-
-// 4. Execute with consent token
-const result = await rails.execute(draft, approval);
-
-// 5. Verify ledger was updated
-const balance = await ledgerStore.getBalance('bob', 'flashy-gold');
-```
-
-## Invariants Tested
-
-✅ **Draft cannot execute without consent token**  
-✅ **Consent token is bound to specific draft**  
-✅ **Execution is idempotent by draft ID**  
-✅ **Revoked grants refuse execution**  
-✅ **Expired tokens are rejected**  
-✅ **Attenuated grants cannot exceed parent scope**  
-
-## Next Steps
-
-Once comfortable with the consent gate:
-1. Move to Example 3 to learn **trust graphs** (multi-party routing)
-2. Understand how Magician seals outcomes
-3. Learn identity and delegation in FlashyID
+1. Example 3: **trust graphs** — consent on every hop of an introduction
+2. Example 4: **flashyID** — the delegation chains a signed consent token carries
