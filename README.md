@@ -28,6 +28,8 @@ npm test examples/01-ledger-basics/  # ~163 test cases
 - ✅ Balance invariant (never negative)
 - ✅ Audit trail (immutable history)
 
+**Runs:** needs `@flashylabs/ledger` — `toMinor`/`toGold` are a local helper (`money.mjs`); the ledger does not export them.
+
 **Read:** [`examples/01-ledger-basics/README.md`](examples/01-ledger-basics/)
 
 ---
@@ -49,6 +51,8 @@ npm test examples/02-rails-consent/  # ~151 test cases
 - ✅ Attenuation (grants narrow, never widen)
 - ✅ Immediate revocation
 - ✅ Ledger integration
+
+**Runs:** needs `@flashylabs/rails`
 
 **Read:** [`examples/02-rails-consent/README.md`](examples/02-rails-consent/)
 
@@ -72,6 +76,8 @@ npm test examples/03-magician-intro/  # ~137 test cases
 - ✅ Opaque decline (no information leak)
 - ✅ Verification (portable, browser-compatible)
 
+**Runs:** needs `@magician-network/core`
+
 **Read:** [`examples/03-magician-intro/README.md`](examples/03-magician-intro/)
 
 ---
@@ -94,6 +100,8 @@ npm test examples/04-flashyid-oauth/  # ~109 test cases
 - ✅ Attenuation enforcement (never widen)
 - ✅ Revocation and expiry
 
+**Runs:** needs `@flashyid/sdk`
+
 **Read:** [`examples/04-flashyid-oauth/README.md`](examples/04-flashyid-oauth/)
 
 ---
@@ -115,6 +123,8 @@ npm test examples/05-combined-workflow/  # ~136 test cases
 - ✅ Rails creates consent-gated transfer
 - ✅ Ledger records settlement atomically
 - ✅ Full audit trail + sealed outcome
+
+**Runs:** needs `@flashyid/sdk`, `@flashylabs/rails`, `@magician-network/core`
 
 **Read:** [`examples/05-combined-workflow/README.md`](examples/05-combined-workflow/)
 
@@ -139,6 +149,8 @@ npm test examples/06-batch-transfers/  # ~4 comprehensive scenarios
 
 **Use case:** Payroll, bulk refunds, multi-recipient payments.
 
+**Runs:** needs `@flashylabs/ledger`, `@flashylabs/rails`
+
 **Read:** [`examples/06-batch-transfers/README.md`](examples/06-batch-transfers/)
 
 ---
@@ -161,6 +173,8 @@ npm test examples/07-graph-analysis/  # Reachability, paths, bottlenecks
 - ✅ Revocation impact (connectivity after edge removal)
 
 **Use case:** Network planning, risk analysis, load balancing.
+
+**Runs:** needs `@magician-network/core`
 
 **Read:** [`examples/07-graph-analysis/README.md`](examples/07-graph-analysis/)
 
@@ -186,6 +200,8 @@ npm test examples/08-error-recovery/  # Errors, recovery, retries
 
 **Use case:** Production resilience, reliability patterns.
 
+**Runs:** needs `@flashylabs/ledger`, `@flashylabs/rails`, `@magician-network/core`
+
 **Read:** [`examples/08-error-recovery/README.md`](examples/08-error-recovery/)
 
 ---
@@ -208,6 +224,8 @@ npm test examples/09-attenuation-chains/  # Narrowing, widening rejection, revoc
 - ✅ Cascading revocation (revoke parent → children invalid)
 
 **Use case:** Principle of least privilege, team delegation, access control.
+
+**Runs:** needs `@flashyid/sdk`
 
 **Read:** [`examples/09-attenuation-chains/README.md`](examples/09-attenuation-chains/)
 
@@ -233,6 +251,8 @@ npm test examples/10-performance/  # Concurrency, queries, scaling
 
 **Use case:** Capacity planning, optimization, production readiness.
 
+**Runs:** needs `@flashylabs/ledger`, `@flashylabs/rails`
+
 **Read:** [`examples/10-performance/README.md`](examples/10-performance/)
 
 ---
@@ -254,6 +274,8 @@ npm test examples/11-intentmesh/  # ~180 test cases
 - ✅ Computed expiry (derived from kind, never user input)
 - ✅ Fragment merging (safe multi-org combination)
 - ✅ Visibility filtering (public/private projection)
+
+**Runs:** standalone — nothing to install.
 
 **Read:** [`examples/11-intentmesh/README.md`](examples/11-intentmesh/)
 
@@ -281,6 +303,8 @@ npm test examples/12-rites/  # 28 test cases
 - ✅ Human consecration (`person/` only, and only when witnessed)
 - ✅ The four refusals (agents observe/humans consecrate; no money; append-only)
 - ✅ The anti-metric (`metrics` ship witnessed/consecrated with the raw count)
+
+**Runs:** standalone — nothing to install.
 
 **Read:** [`examples/12-rites/README.md`](examples/12-rites/)
 
@@ -310,6 +334,8 @@ npm test examples/13-aao-validation/  # 21 test cases
 - ✅ Approval placed where a mistake hurts (`rolesGatingAtOrAbove`)
 - ✅ Explicit permissions (`roleHasCapability` never infers)
 
+**Runs:** standalone — nothing to install.
+
 **Read:** [`examples/13-aao-validation/README.md`](examples/13-aao-validation/)
 
 **Why:** Part of the Flashy estate standards. A partner reads one manifest and
@@ -333,9 +359,11 @@ npm test examples/14-mesh-consumer/  # 16 test cases
 **Concepts covered:**
 - ✅ Four findings never collapsed (`ok` / `absent` / `unreachable` / `invalid`)
 - ✅ **Null is never zero** (all sources down → `ritual: null`, not `{performed: 0}`)
-- ✅ https only; one redirect within the same registrable domain
+- ✅ https only; one redirect to the same domain or a subdomain of it
 - ✅ The anti-metric survives the fold (witnessed/consecrated with the raw count)
 - ✅ Never throws — every source failure is a finding
+
+**Runs:** standalone — nothing to install.
 
 **Read:** [`examples/14-mesh-consumer/README.md`](examples/14-mesh-consumer/)
 
@@ -347,8 +375,15 @@ Every example is listed in [`examples/manifest.json`](examples/manifest.json)
 (contract `flashy-examples/1`), validated against
 [`examples/manifest.schema.json`](examples/manifest.schema.json). A test
 (`manifest.test.mjs`) pins the manifest to the filesystem — no example is added
-or renamed without the index following. `standalone: true` marks the
-dependency-free examples (11–14) that run and test with no external npm package.
+or renamed without the index following. Each entry carries `runs` —
+`"standalone"` for the dependency-free examples (11–14) that run and test with
+nothing installed, `"needs-packages"` for 01–10 — and `packages`, the exact
+list of npm packages that example imports. Both are **measured, not typed**:
+the test derives `packages` from the `import` lines of each `index.mjs` and
+`index.test.mjs`, checks every listed package is declared in `package.json`,
+checks `test:standalone` runs exactly the standalone set, and checks the
+**Runs:** line in each block above says the same thing. (`standalone: true` is
+the same fact as a boolean, kept for readers of the first revision.)
 
 ---
 
@@ -388,17 +423,45 @@ Example: The ledger test suite runs 163 cases covering initialization, transfers
 
 ## 📦 Installation
 
-```bash
-npm install
-```
-
-All packages are published to npm. To use local development checkouts:
+**Examples 11–14 need nothing installed.** They import only `node:` builtins:
 
 ```bash
-# Point to sibling checkouts
-npm install file:../flashy-ledger file:../flashy-rails \
-  file:../magician/packages/core file:../flashyid/packages/sdk
+node examples/12-rites/index.mjs
+npm run test:standalone        # manifest + 11–14, zero install
 ```
+
+**Examples 01–10 need the four core packages, and none of the four is on the
+public npm registry today** (measured 2026-09-28 against the sibling checkouts):
+
+| Package | Version in its repository | Where it publishes |
+|---|---|---|
+| `@flashylabs/ledger` | 1.0.0 | GitHub Packages (`npm.pkg.github.com`), access **restricted** |
+| `@flashylabs/rails` | 1.0.0 | not yet published; incubated in `flashy-labs` |
+| `@magician-network/core` | 0.1.0 | not yet published |
+| `@flashyid/sdk` | 0.1.1 | not yet published |
+
+So a plain `npm install` fails on a clean machine, `npm test` cannot run for a
+stranger, and this repository carries no lockfile (see
+[`CONTRIBUTING.md`](CONTRIBUTING.md), *Why there is no lockfile yet*). The
+ranges in `package.json` (`^1.0.0`, `^1.0.0`, `^0.1.0`, `^0.1.1`) are the
+versions that actually exist, so the day each package publishes the same
+`npm install` resolves it with no edit here.
+
+**The working install today is the sibling checkouts.** With the four
+repositories cloned beside this one (and the ledger built — its `prepare`
+script does that on install):
+
+```bash
+npm install --no-package-lock \
+  file:../flashy-ledger \
+  file:../flashy-rails \
+  file:../magician/packages/core \
+  file:../flashyid/packages/sdk
+npm test
+```
+
+Nothing above claims a package is published. When one is, this section is the
+place that changes.
 
 ---
 
@@ -473,8 +536,8 @@ examples/
 
 ## ⚡ Quick Checklist
 
-- [ ] Run `npm install`
-- [ ] Run `npm test` (all ~600 tests pass)
+- [ ] Run `npm run test:standalone` (manifest + examples 11–14, nothing installed)
+- [ ] Link the sibling checkouts (see Installation), then run `npm test`
 - [ ] Run `npm run examples:ledger` (see output)
 - [ ] Read `examples/01-ledger-basics/README.md`
 - [ ] Read `examples/05-combined-workflow/README.md` (the full picture)

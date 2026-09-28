@@ -1,22 +1,22 @@
 {
   "$schema": "./manifest.schema.json",
   "manifest": "flashy-examples/1",
-  "generated": "2026-09-26",
-  "description": "Machine-readable index of every example. dir is the directory under examples/; standard is the estate format or package it teaches; standalone is true when the example runs and tests with no external npm dependency (dependency-free), false when it needs a published @flashylabs/@magician-network/@flashyid package.",
+  "generated": "2026-09-28",
+  "description": "Machine-readable index of every example. dir is the directory under examples/; standard is the estate format or package it teaches; runs is 'standalone' when the example runs and tests with nothing installed, 'needs-packages' when it imports one or more of the estate's npm packages; packages lists exactly the bare-specifier packages its index.mjs and index.test.mjs import (empty for standalone). standalone is the same fact as a boolean, kept for readers of the first revision of this manifest.",
   "examples": [
-    { "dir": "01-ledger-basics", "title": "Ledger Basics", "standard": "@flashylabs/ledger", "standalone": false, "teaches": "Append-only multi-asset settlement; Minor type; idempotent replay" },
-    { "dir": "02-rails-consent", "title": "Rails Consent", "standard": "@flashylabs/rails", "standalone": false, "teaches": "Draft to execute consent gate; attenuation; revocation" },
-    { "dir": "03-magician-intro", "title": "Magician Routing", "standard": "trust/1", "standalone": false, "teaches": "Trust graphs; consent-path routing; sealed, opaque outcomes" },
-    { "dir": "04-flashyid-oauth", "title": "FlashyID OAuth", "standard": "@flashyid/sdk", "standalone": false, "teaches": "OAuth 2.1; attenuated grants; enforcement before minting" },
-    { "dir": "05-combined-workflow", "title": "Combined Workflow", "standard": "integration", "standalone": false, "teaches": "All four core systems end to end" },
-    { "dir": "06-batch-transfers", "title": "Batch Transfers", "standard": "@flashylabs/rails", "standalone": false, "teaches": "Many transfers, one consent, atomic execution" },
-    { "dir": "07-graph-analysis", "title": "Graph Analysis", "standard": "trust/1", "standalone": false, "teaches": "Reachability, shortest paths, bottlenecks, revocation impact" },
-    { "dir": "08-error-recovery", "title": "Error Recovery", "standard": "cross-system", "standalone": false, "teaches": "Insufficient balance, revoked grants, retries, fallback" },
-    { "dir": "09-attenuation-chains", "title": "Attenuation Chains", "standard": "@flashyid/sdk", "standalone": false, "teaches": "Multi-level delegation narrowing; cascading revocation" },
-    { "dir": "10-performance", "title": "Performance Patterns", "standard": "@flashylabs/ledger", "standalone": false, "teaches": "Throughput, concurrency, query and memory scaling" },
-    { "dir": "11-intentmesh", "title": "IntentMesh Roadmaps", "standard": "intent/1", "standalone": true, "teaches": "Federated roadmaps; structural visibility; human-gated promotion; computed expiry; merge" },
-    { "dir": "12-rites", "title": "Rites — the present tense", "standard": "ritual/1", "standalone": true, "teaches": "Liturgies + observances; performed/witnessed/consecrated ladder; independent witness; append-only; the anti-metric" },
-    { "dir": "13-aao-validation", "title": "AAO Manifest Validation", "standard": "aao/0.1", "standalone": true, "teaches": "The aao:0.1 manifest; the seven conformance questions; capabilities name actions" },
-    { "dir": "14-mesh-consumer", "title": "Mesh Reference Consumer", "standard": "intent/1 + ritual/1", "standalone": true, "teaches": "Reading fragments from many sources; ok/absent/unreachable/invalid; null is never zero" }
+    { "dir": "01-ledger-basics", "title": "Ledger Basics", "standard": "@flashylabs/ledger", "standalone": false, "runs": "needs-packages", "packages": ["@flashylabs/ledger"], "teaches": "Append-only multi-asset settlement; Minor type; idempotent replay" },
+    { "dir": "02-rails-consent", "title": "Rails Consent", "standard": "@flashylabs/rails", "standalone": false, "runs": "needs-packages", "packages": ["@flashylabs/rails"], "teaches": "Draft to execute consent gate; attenuation; revocation" },
+    { "dir": "03-magician-intro", "title": "Magician Routing", "standard": "trust/1", "standalone": false, "runs": "needs-packages", "packages": ["@magician-network/core"], "teaches": "Trust graphs; consent-path routing; sealed, opaque outcomes" },
+    { "dir": "04-flashyid-oauth", "title": "FlashyID OAuth", "standard": "@flashyid/sdk", "standalone": false, "runs": "needs-packages", "packages": ["@flashyid/sdk"], "teaches": "OAuth 2.1; attenuated grants; enforcement before minting" },
+    { "dir": "05-combined-workflow", "title": "Combined Workflow", "standard": "integration", "standalone": false, "runs": "needs-packages", "packages": ["@flashyid/sdk", "@flashylabs/rails", "@magician-network/core"], "teaches": "All four core systems end to end" },
+    { "dir": "06-batch-transfers", "title": "Batch Transfers", "standard": "@flashylabs/rails", "standalone": false, "runs": "needs-packages", "packages": ["@flashylabs/ledger", "@flashylabs/rails"], "teaches": "Many transfers, one consent, atomic execution" },
+    { "dir": "07-graph-analysis", "title": "Graph Analysis", "standard": "trust/1", "standalone": false, "runs": "needs-packages", "packages": ["@magician-network/core"], "teaches": "Reachability, shortest paths, bottlenecks, revocation impact" },
+    { "dir": "08-error-recovery", "title": "Error Recovery", "standard": "cross-system", "standalone": false, "runs": "needs-packages", "packages": ["@flashylabs/ledger", "@flashylabs/rails", "@magician-network/core"], "teaches": "Insufficient balance, revoked grants, retries, fallback" },
+    { "dir": "09-attenuation-chains", "title": "Attenuation Chains", "standard": "@flashyid/sdk", "standalone": false, "runs": "needs-packages", "packages": ["@flashyid/sdk"], "teaches": "Multi-level delegation narrowing; cascading revocation" },
+    { "dir": "10-performance", "title": "Performance Patterns", "standard": "@flashylabs/ledger", "standalone": false, "runs": "needs-packages", "packages": ["@flashylabs/ledger", "@flashylabs/rails"], "teaches": "Throughput, concurrency, query and memory scaling" },
+    { "dir": "11-intentmesh", "title": "IntentMesh Roadmaps", "standard": "intent/1", "standalone": true, "runs": "standalone", "packages": [], "teaches": "Federated roadmaps; structural visibility; human-gated promotion; computed expiry; merge" },
+    { "dir": "12-rites", "title": "Rites — the present tense", "standard": "ritual/1", "standalone": true, "runs": "standalone", "packages": [], "teaches": "Liturgies + observances; performed/witnessed/consecrated ladder; independent witness; append-only; the anti-metric" },
+    { "dir": "13-aao-validation", "title": "AAO Manifest Validation", "standard": "aao/0.1", "standalone": true, "runs": "standalone", "packages": [], "teaches": "The aao:0.1 manifest; the seven conformance questions; capabilities name actions" },
+    { "dir": "14-mesh-consumer", "title": "Mesh Reference Consumer", "standard": "intent/1 + ritual/1", "standalone": true, "runs": "standalone", "packages": [], "teaches": "Reading fragments from many sources; ok/absent/unreachable/invalid; null is never zero" }
   ]
 }

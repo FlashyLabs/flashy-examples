@@ -3,8 +3,9 @@
 // Shows throughput testing, concurrent operations, and how the system
 // scales under load while maintaining all invariants.
 
-import { Ledger, toMinor } from '@flashylabs/ledger';
-import { Rails } from '@flashylabs/rails';
+import { Ledger } from '@flashylabs/ledger';
+// toMinor is a Rails export (src/gold.mjs), not a ledger one.
+import { Rails, toMinor } from '@flashylabs/rails';
 
 async function performancePatternsExample() {
   console.log('⚡ Example 10: Performance Patterns\n');

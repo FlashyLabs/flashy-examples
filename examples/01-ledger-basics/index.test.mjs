@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { InMemoryLedgerStore, toMinor, toGold } from '@flashylabs/ledger';
+import { InMemoryLedgerStore } from '@flashylabs/ledger';
+import { toMinor, toGold } from './money.mjs';
 
 test('Ledger: create and query balances', async () => {
   const store = new InMemoryLedgerStore();

@@ -16,13 +16,27 @@
       "minItems": 1,
       "items": {
         "type": "object",
-        "required": ["dir", "title", "standard", "standalone", "teaches"],
+        "required": ["dir", "title", "standard", "standalone", "runs", "packages", "teaches"],
         "additionalProperties": false,
         "properties": {
           "dir": { "type": "string", "pattern": "^[0-9]{2}-[a-z0-9-]+$" },
           "title": { "type": "string", "minLength": 1 },
           "standard": { "type": "string", "minLength": 1 },
-          "standalone": { "type": "boolean" },
+          "standalone": {
+            "type": "boolean",
+            "description": "true iff runs is 'standalone'. Kept alongside runs for readers of the first revision."
+          },
+          "runs": {
+            "type": "string",
+            "enum": ["standalone", "needs-packages"],
+            "description": "standalone: runs and tests with nothing installed. needs-packages: imports at least one npm package, listed in packages."
+          },
+          "packages": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": { "type": "string", "pattern": "^(@[a-z0-9-]+/)?[a-z0-9._-]+$" },
+            "description": "Exactly the bare-specifier npm packages the example's index.mjs and index.test.mjs import. Empty iff runs is 'standalone'."
+          },
           "teaches": { "type": "string", "minLength": 1 }
         }
       }

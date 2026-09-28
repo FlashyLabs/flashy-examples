@@ -3,9 +3,10 @@
 // Shows how to handle errors gracefully: hop declination, revoked grants,
 // insufficient balance, and how to implement retry logic.
 
-import { Rails } from '@flashylabs/rails';
+// toMinor is a Rails export (src/gold.mjs), not a ledger one.
+import { Rails, toMinor } from '@flashylabs/rails';
 import { MagicianRouter } from '@magician-network/core';
-import { Ledger, toMinor } from '@flashylabs/ledger';
+import { Ledger } from '@flashylabs/ledger';
 
 async function errorRecoveryExample() {
   console.log('⚡ Example 8: Error Recovery\n');

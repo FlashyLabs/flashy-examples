@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { Ledger, toMinor } from '@flashylabs/ledger';
-import { Rails } from '@flashylabs/rails';
+import { Ledger } from '@flashylabs/ledger';
+import { Rails, toMinor } from '@flashylabs/rails';
 
 test('Batch transfers: multiple recipients', async () => {
   const ledger = new Ledger({ store: new Map() });

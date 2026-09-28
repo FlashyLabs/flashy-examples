@@ -131,6 +131,25 @@ Before opening a pull request:
 - [ ] Examples follow house rules (never hardcode amounts, always use Minor, etc.)
 - [ ] Added to root README.md with description
 
+## Why there is no lockfile yet
+
+This repository has no `package-lock.json`, on purpose, and CI does not run
+`npm ci`. A lockfile records the resolved URL and integrity hash of every
+package in the tree. Four of this repository's five dependencies cannot be
+resolved from the public registry today: `@flashylabs/ledger` publishes to
+GitHub Packages with restricted access, and `@flashylabs/rails`,
+`@magician-network/core` and `@flashyid/sdk` are not published at all. A
+lockfile generated against sibling `file:` checkouts would pin local paths that
+exist on one laptop, and one written by hand would be a fabricated record of
+resolutions nobody performed — which is the one thing a lockfile must never be.
+
+So the honest state is: no lockfile, `npm install` (not `npm ci`) in the
+advisory `full` CI job, and the `standalone` job as the gate. The lockfile lands
+with **move 1 — publication**: the day the four packages resolve from a
+registry a stranger can reach, run `npm install`, commit the resulting
+`package-lock.json`, switch `ci.yml`'s `full` job to `npm ci` and drop its
+`continue-on-error`. Until then, do not add one.
+
 ## Principles
 
 **Clarity over cleverness.** Readable code teaches better than clever code.

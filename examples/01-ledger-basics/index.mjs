@@ -5,7 +5,9 @@
  * Demonstrates: issuance, transfers, balance queries, idempotency.
  */
 
-import { InMemoryLedgerStore, toMinor, toGold } from '@flashylabs/ledger';
+import { InMemoryLedgerStore } from '@flashylabs/ledger';
+// The ledger exports no decimal helpers; see money.mjs for where the canonical ones live.
+import { toMinor, toGold } from './money.mjs';
 
 async function main() {
   console.log('=== Flashy Ledger Basics ===\n');

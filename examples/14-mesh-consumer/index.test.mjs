@@ -1,5 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   STATES,
   readSource,
@@ -8,6 +11,10 @@ import {
   consume,
   memoryFetcher
 } from './index.mjs';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const VENDORED = join(here, 'vendor-domain.mjs');
+const CANON = join(here, '..', '..', '..', 'agent-dns', 'vendor-domain.mjs');
 
 const intentBody = (items) => JSON.stringify({ intent: '1', source: 'repo/x', org: 'org/x', generated: 't', items });
 const ritualBody = (observances) => JSON.stringify({
@@ -76,6 +83,44 @@ describe('Example 14: mesh reference consumer', () => {
       assert.match(cross.reason, /another host/);
     });
 
+    it('acme.co.uk → www.acme.co.uk is followed; acme.example → other.example is refused (subdomain rule, no suffix guess)', async () => {
+      const f = memoryFetcher({
+        'https://acme.co.uk/i.json': { status: 301, location: 'https://www.acme.co.uk/i.json' },
+        'https://www.acme.co.uk/i.json': { status: 200, body: intentBody([]) },
+        'https://acme.example/i.json': { status: 301, location: 'https://other.example/i.json' },
+        'https://other.example/i.json': { status: 200, body: intentBody([]) },
+        // The old "last two labels" slice read these two as one publisher. They are not.
+        'https://one.co.uk/i.json': { status: 301, location: 'https://two.co.uk/i.json' },
+        'https://two.co.uk/i.json': { status: 200, body: intentBody([]) },
+        // A parent is refused too: the publisher of www.acme.example is not the publisher of acme.example.
+        'https://www.acme.example/i.json': { status: 301, location: 'https://acme.example/i.json' },
+        'https://acme.example/r.json': { status: 200, body: intentBody([]) }
+      });
+      assert.equal((await readSource(f, 'https://acme.co.uk/i.json')).state, 'ok');
+
+      const sibling = await readSource(f, 'https://acme.example/i.json');
+      assert.equal(sibling.state, 'invalid');
+      assert.match(sibling.reason, /another host/);
+
+      const coUk = await readSource(f, 'https://one.co.uk/i.json');
+      assert.equal(coUk.state, 'invalid');
+
+      const parent = await readSource(f, 'https://www.acme.example/i.json');
+      assert.equal(parent.state, 'invalid');
+    });
+
+    it('refuses a redirect that downgrades to http, and never fetches the refused target', async () => {
+      const calls = [];
+      const inner = memoryFetcher({
+        'https://acme.example/i.json': { status: 302, location: 'http://acme.example/i.json' },
+        'http://acme.example/i.json': { status: 200, body: intentBody([]) }
+      });
+      const f = async (url) => { calls.push(url); return inner(url); };
+      const r = await readSource(f, 'https://acme.example/i.json');
+      assert.equal(r.state, 'invalid');
+      assert.deepEqual(calls, ['https://acme.example/i.json']);
+    });
+
     it('exposes the four state names', () => {
       assert.deepEqual(STATES, ['ok', 'absent', 'unreachable', 'invalid']);
     });
@@ -140,6 +185,25 @@ describe('Example 14: mesh reference consumer', () => {
       const r = await consume(f, ['https://a.com/i.json']);
       assert.equal(r.sources[0].fragment, undefined);
       assert.equal(r.sources[0].state, 'ok');
+    });
+  });
+
+  describe('vendor-domain.mjs — a copy of the agent-dns canon, never a source', () => {
+    it('imports nothing and is what index.mjs takes the rule from', () => {
+      const src = readFileSync(VENDORED, 'utf8');
+      assert.doesNotMatch(src, /^\s*import\b/m);
+      assert.match(src, /export function sameDomainUrl\(/);
+      const index = readFileSync(join(here, 'index.mjs'), 'utf8');
+      assert.ok(index.includes("'./vendor-domain.mjs'"), 'index.mjs takes the rule from the vendored copy');
+      assert.doesNotMatch(index, /slice\(-2\)|sameRegistrableDomain/, 'the label-slice rule is gone');
+    });
+
+    it('is byte-identical to agent-dns/vendor-domain.mjs (unknown, not passed, without that sibling checkout)', (t) => {
+      if (!existsSync(CANON)) {
+        t.skip(`unknown: ${CANON} is not checked out beside this repository — drift was not measured`);
+        return;
+      }
+      assert.equal(readFileSync(VENDORED, 'utf8'), readFileSync(CANON, 'utf8'), 're-vendor from agent-dns; never edit the copy');
     });
   });
 });

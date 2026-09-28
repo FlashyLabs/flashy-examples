@@ -19,10 +19,16 @@ All amounts are integers (minor units):
 - Flashy Gold has 2 decimals: 25.50 Gold = 2550 minor units
 - USD has 2 decimals: 100.00 USD = 10000 minor units
 
-Convert with `toMinor()` and `toGold()`:
+Convert with `toMinor()` and `toGold()`. **These are not exported by
+`@flashylabs/ledger`** — the ledger ships the generic `fromDecimal(value,
+decimals)` / `toDecimal(minor, decimals)`, and the Gold-specific pair lives in
+Flashy Rails (`@flashylabs/rails`, `src/gold.mjs`). A ledger example that
+imported Rails to format a number would teach the dependency arrow backwards,
+so this example keeps a tiny local copy in [`money.mjs`](money.mjs) that wraps
+the ledger's own money module:
 
 ```javascript
-import { toMinor, toGold } from '@flashylabs/ledger';
+import { toMinor, toGold } from './money.mjs';
 
 const amount = toMinor('25.50');  // 2550
 const display = toGold(2550);     // '25.50'

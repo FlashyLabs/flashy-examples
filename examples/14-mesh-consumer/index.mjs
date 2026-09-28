@@ -16,24 +16,23 @@
  *     (absent), a thrown fetch (unreachable) and a 200 that does not validate
  *     (invalid) are reported distinctly. Collapsing them makes an outage look
  *     like a publisher that published nothing.
- *   - **https only, one redirect within the same registrable domain.** A source
- *     that redirects to another host is not the same publisher.
+ *   - **https only, one redirect to the same domain or a subdomain of it.** A
+ *     source that redirects to another host is not the same publisher. "Same
+ *     domain" is `sameDomainUrl` from `./vendor-domain.mjs` — the estate's one
+ *     rule, canonical in the agent-dns repository and vendored here
+ *     byte-identically: the target host is the source host or a subdomain of
+ *     it. Not a "registrable domain" guess: this file used to slice the last
+ *     two labels of each hostname, which reads `acme.co.uk` and `other.co.uk`
+ *     as one publisher. Without a Public Suffix List nothing can tell `co.uk`
+ *     from `example.com`, so the rule refuses to guess.
  *   - **The anti-metric survives the fold.** Ritual metrics carry witnessed and
  *     consecrated beside the raw count, always.
  */
 
+import { sameDomainUrl } from './vendor-domain.mjs';
+
 /** A source's read state. `ok` carries a fragment; the rest are findings. */
 export const STATES = ['ok', 'absent', 'unreachable', 'invalid'];
-
-const sameRegistrableDomain = (a, b) => {
-  try {
-    const ha = new URL(a).hostname.split('.').slice(-2).join('.');
-    const hb = new URL(b).hostname.split('.').slice(-2).join('.');
-    return ha === hb;
-  } catch {
-    return false;
-  }
-};
 
 /**
  * Read one source with an injected fetcher. The fetcher returns
@@ -53,9 +52,10 @@ export async function readSource(fetcher, url) {
   }
   if (!res) return { url, state: 'unreachable' };
 
-  // Follow at most one redirect, and only within the same registrable domain.
+  // Follow at most one redirect, and only to the same domain or a subdomain of
+  // it (https both sides — `sameDomainUrl` refuses a downgrade too).
   if (res.status >= 300 && res.status < 400 && res.location) {
-    if (!sameRegistrableDomain(url, res.location)) {
+    if (!sameDomainUrl(url, res.location)) {
       return { url, state: 'invalid', reason: 'redirect to another host' };
     }
     try {

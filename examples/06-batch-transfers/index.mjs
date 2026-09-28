@@ -6,8 +6,9 @@
 // Pattern: draft all transfers → collect all consents → execute atomically
 // (no partial success, no half-committed state)
 
-import { Ledger, toMinor, toGold } from '@flashylabs/ledger';
-import { Rails } from '@flashylabs/rails';
+import { Ledger } from '@flashylabs/ledger';
+// toMinor/toGold are Rails exports (src/gold.mjs), not ledger ones.
+import { Rails, toMinor, toGold } from '@flashylabs/rails';
 
 async function batchTransferExample() {
   console.log('⚡ Example 6: Batch Transfers\n');

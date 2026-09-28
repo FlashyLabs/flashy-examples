@@ -1,0 +1,66 @@
+# CI for flashy-examples.
+#
+# Two jobs, because this repository is in two states at once. Examples 11-14
+# are dependency-free and run for a stranger with nothing installed; examples
+# 01-10 import four estate packages of which none is on the public npm registry
+# today (`@flashylabs/ledger` and `@flashylabs/rails` publish to GitHub
+# Packages, restricted; `@magician-network/core` and `@flashyid/sdk` are
+# unpublished 0.1.x). So `npm install` cannot succeed on a clean runner, and a
+# single job that installed first would be red on every push for a reason no
+# commit here can change — which is how a check stops being read.
+#
+# `standalone` is the gate. `full` is advisory until the packages publish
+# (CONTRIBUTING.md, "Why there is no lockfile yet"), and turns into a gate by
+# removing `continue-on-error` and switching `npm install` to `npm ci`.
+
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  standalone:
+    name: standalone (lint + dependency-free examples, zero install)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # `npm run lint` is `eslint .`, and eslint is this repository's only
+      # devDependency. It cannot be installed the normal way: `npm install`
+      # resolves the whole tree and the four unpublished packages fail it. So
+      # eslint alone is installed into a prefix outside the repository and put
+      # on PATH — the script that runs is still the committed `npm run lint`,
+      # not a copy of its command line, so the two cannot drift.
+      - name: Fetch eslint (the one dev tool) outside the tree
+        run: npm install --prefix "$RUNNER_TEMP/lint" --no-package-lock --no-audit --no-fund eslint@^9.0.0
+      - name: Lint
+        run: PATH="$RUNNER_TEMP/lint/node_modules/.bin:$PATH" npm run lint
+
+      - name: Manifest + standalone examples (11-14)
+        run: npm run test:standalone
+
+  full:
+    name: full (needs unpublished packages — advisory until published)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # `npm install`, not `npm ci`: there is no package-lock.json yet, and
+      # `npm ci` refuses to run without one — that failure would be about the
+      # lockfile, and would hide the one this job exists to show (the packages
+      # are not resolvable from the public registry). Switch to `npm ci` when
+      # the lockfile lands with publication.
+      - name: Install (expected to fail until the four packages publish)
+        run: npm install --no-audit --no-fund
+      - name: Every example's suite
+        run: npm test

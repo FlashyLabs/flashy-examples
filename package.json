@@ -19,8 +19,8 @@
   "dependencies": {
     "@flashylabs/ledger": "^1.0.0",
     "@flashylabs/rails": "^1.0.0",
-    "@magician-network/core": "^1.0.0",
-    "@flashyid/sdk": "^1.0.0"
+    "@magician-network/core": "^0.1.0",
+    "@flashyid/sdk": "^0.1.1"
   },
   "devDependencies": {
     "eslint": "^9.0.0"

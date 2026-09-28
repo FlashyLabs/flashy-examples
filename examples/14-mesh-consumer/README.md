@@ -18,7 +18,7 @@ expensive habit:
 | `ok` | 200 + a valid fragment | Carries the fragment |
 | `absent` | 404 | The publisher exists and published nothing here |
 | `unreachable` | fetch threw / null / non-200 | A fact about *our* connectivity |
-| `invalid` | not https, not JSON, unknown contract, cross-host redirect | Served something, but not a fragment |
+| `invalid` | not https, not JSON, unknown contract, redirect off the domain or to http | Served something, but not a fragment |
 
 ## Null is never zero
 
@@ -34,9 +34,21 @@ report.ritual;  // { performed, witnessed, consecrated }  OR  null
 ## The rules it enforces
 
 - **https only.** A non-https URL is `invalid`.
-- **One redirect, same registrable domain.** `acme.com → www.acme.com` is the
-  same publisher; `acme.com → other.com` is `invalid` — a redirect must not let
-  one domain borrow another's record.
+- **One redirect, to the same domain or a subdomain of it.** `acme.com →
+  www.acme.com` is the same publisher; `acme.com → other.com` is `invalid` — a
+  redirect must not let one domain borrow another's record. The rule is
+  `sameDomainUrl` in `vendor-domain.mjs`: both URLs https, and the target's
+  host is the source's host or a subdomain of it. A parent (`www.acme.com →
+  acme.com`) and a sibling are refused too. It is deliberately **not** "same
+  registrable domain": an earlier version of this example sliced the last two
+  labels of each hostname, which reads `acme.co.uk` and `other.co.uk` as one
+  publisher — without a Public Suffix List nothing can tell `co.uk` from
+  `example.com`, so the rule refuses to guess.
+- **`vendor-domain.mjs` is a copy, not a source.** It is byte-identical to
+  `vendor-domain.mjs` in the `agent-dns` repository, where the rule is
+  canonical, and is vendored likewise into `agent-wellknown` and `bastion` so
+  every consumer and every checker in the estate answers "same domain" the
+  same way. Re-vendor from `agent-dns`; never edit the copy here.
 - **The anti-metric survives the fold.** Ritual metrics carry `witnessed` and
   `consecrated` beside the raw `performed`, always.
 - **Never throws.** Every source failure is a finding in the report, not an
@@ -51,12 +63,13 @@ report.ritual;  // { performed, witnessed, consecrated }  OR  null
 | `summarizeRituals(fragments)` | Sum ritual metrics with the raw count, or `null` |
 | `consume(fetcher, urls)` | Read all, route by contract, fold into one report |
 | `memoryFetcher(map)` | An in-memory fetcher for demos and tests |
+| `sameDomainUrl(from, to)` (from `vendor-domain.mjs`) | The same-domain rule: both https, `to`'s host is `from`'s host or a subdomain of it |
 
 ## Running
 
 ```bash
 node examples/14-mesh-consumer/index.mjs
-npm test examples/14-mesh-consumer   # 16 test cases
+npm test examples/14-mesh-consumer   # 18 test cases
 ```
 
 ## Where this goes next
